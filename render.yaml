@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: stockmarket-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: "3.11"
+    healthCheckPath: /api/health

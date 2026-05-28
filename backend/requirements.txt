@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+pydantic-settings
+pandas
+numpy
+yfinance
+scikit-learn
+python-jose
+passlib[bcrypt]
+cryptography
+websockets
+email-validator
+python-multipart
