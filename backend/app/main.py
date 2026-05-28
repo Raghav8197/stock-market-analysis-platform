@@ -3,12 +3,36 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from app.config import settings
-from app.database import engine, Base
+from app.database import engine, Base, SessionLocal
 from app.routers import auth, stocks, alerts, funds
-from app import data_fetcher
+from app import data_fetcher, models
+from passlib.context import CryptContext
 
 # Create database tables (SQLite fallback setup)
 Base.metadata.create_all(bind=engine)
+
+# ── Seed default user on startup ──────────────────────────
+def seed_default_user():
+    """Create the default admin account if it doesn't already exist."""
+    _pwd = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+    db = SessionLocal()
+    try:
+        email = "raghavagrawal08@gmail.com"
+        existing = db.query(models.User).filter(models.User.email == email).first()
+        if not existing:
+            user = models.User(
+                email=email,
+                hashed_password=_pwd.hash("Enter@123")
+            )
+            db.add(user)
+            db.commit()
+            print(f"[Seed] Created default user: {email}")
+        else:
+            print(f"[Seed] Default user already exists: {email}")
+    finally:
+        db.close()
+
+seed_default_user()
 
 app = FastAPI(
     title=settings.APP_NAME,
