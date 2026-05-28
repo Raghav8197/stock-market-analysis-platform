@@ -241,6 +241,81 @@ def screen_stocks(
             
     return results
 
+@router.get("/screener/top-intraday")
+def get_top_intraday_movers(
+    market: str = Query("ALL", description="ALL, US, IN"),
+):
+    """
+    Scans the 15-minute timeframe for the stock universe in parallel.
+    Returns top price gainers and volume breakout stocks.
+    """
+    results = []
+    
+    # Filter Universe by market if selected
+    filtered_symbols = []
+    for symbol in SCREENER_UNIVERSE:
+        is_indian = symbol.endswith(".NS") or symbol.endswith(".BO") or symbol in ["RELIANCE", "TCS", "INFY", "HDFCBANK"]
+        if market == "US" and is_indian:
+            continue
+        if market == "IN" and not is_indian:
+            continue
+        filtered_symbols.append(symbol)
+
+    def scan_single_movers(symbol):
+        try:
+            df = data_fetcher.fetch_history(symbol, timeframe="15m", limit=30)
+            if df is None or len(df) < 2:
+                return None
+                
+            df_ind = add_all_indicators(df)
+            df_full = scan_patterns(df_ind)
+            
+            latest = df_full.iloc[-1]
+            prev = df_full.iloc[-2]
+            
+            # Price Change % in last 15 mins
+            close = latest["Close"]
+            prev_close = prev["Close"]
+            change_pct = ((close - prev_close) / prev_close) * 100
+            
+            # Volume surge ratio
+            vol_avg = df_full["Volume"].rolling(20).mean().iloc[-1]
+            vol_surge = latest["Volume"] / vol_avg if (vol_avg and vol_avg > 0) else 1.0
+            
+            rsi_val = latest.get("RSI", 50)
+            
+            return {
+                "symbol": symbol,
+                "name": data_fetcher.resolve_ticker(symbol),
+                "price": round(close, 2),
+                "change_pct": round(change_pct, 2),
+                "volume_surge": round(vol_surge, 1),
+                "rsi": round(rsi_val, 1) if not pd.isna(rsi_val) else 50.0,
+                "patterns_detected": [
+                    pat for pat in ["Doji", "Hammer", "Bullish_Engulfing", "Bearish_Engulfing", "Double_Top", "Double_Bottom", "Head_Shoulders"]
+                    if latest.get(f"Pattern_{pat}", False)
+                ]
+            }
+        except Exception:
+            return None
+
+    # Run scans in parallel
+    with ThreadPoolExecutor(max_workers=min(len(filtered_symbols), 8)) as executor:
+        scan_results = executor.map(scan_single_movers, filtered_symbols)
+        
+    for res in scan_results:
+        if res is not None:
+            results.append(res)
+            
+    # Sort and slice top 6
+    top_gainers = sorted(results, key=lambda x: x["change_pct"], reverse=True)[:6]
+    volume_breakouts = sorted(results, key=lambda x: x["volume_surge"], reverse=True)[:6]
+    
+    return {
+        "top_gainers": top_gainers,
+        "volume_breakouts": volume_breakouts
+    }
+
 # Watchlist endpoints
 @router.get("/watchlist/list", response_model=List[schemas.WatchlistResponse])
 def get_watchlist(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):

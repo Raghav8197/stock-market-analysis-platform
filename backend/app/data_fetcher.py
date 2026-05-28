@@ -56,11 +56,13 @@ def fetch_history(symbol: str, timeframe: str = "1D", limit: int = 250) -> pd.Da
     ticker_symbol = resolve_ticker(symbol)
     
     # Map timeframe
-    # timeframes: "1m", "5m", "1D", "1W"
+    # timeframes: "1m", "5m", "15m", "1D", "1W"
     if timeframe == "1m":
         period, interval = "1d", "1m"
     elif timeframe == "5m":
         period, interval = "5d", "5m"
+    elif timeframe == "15m":
+        period, interval = "5d", "15m"
     elif timeframe == "1W":
         period, interval = "1y", "1wk"
     else: # Default 1D
@@ -332,6 +334,8 @@ def generate_mock_history(symbol: str, timeframe: str, limit: int) -> pd.DataFra
         delta = timedelta(minutes=1)
     elif timeframe == "5m":
         delta = timedelta(minutes=5)
+    elif timeframe == "15m":
+        delta = timedelta(minutes=15)
     elif timeframe == "1W":
         delta = timedelta(weeks=1)
     else:

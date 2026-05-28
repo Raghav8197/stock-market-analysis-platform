@@ -7,6 +7,7 @@ import MutualFunds from "./components/MutualFunds";
 import AISignals from "./components/AISignals";
 import Alerts from "./components/Alerts";
 import AuthModal from "./components/AuthModal";
+import IntradayMovers from "./components/IntradayMovers";
 import {
   DashboardSkeleton,
   ScreenerSkeleton,
@@ -119,6 +120,11 @@ function App() {
         return isFirstLoad
           ? <ScreenerSkeleton />
           : <Screener onSelectStock={selectStockAndNavigate} />;
+
+      case "movers":
+        return isFirstLoad
+          ? <ScreenerSkeleton />
+          : <IntradayMovers onSelectStock={selectStockAndNavigate} />;
 
       case "funds":
         // MutualFunds has its own internal skeleton, skip outer one
