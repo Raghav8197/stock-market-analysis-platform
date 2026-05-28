@@ -80,19 +80,26 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   const searchContainerRef = useRef(null);
 
   useEffect(() => {
-    if (!searchInput) {
+    if (!searchInput || searchInput.trim().length < 2) {
       setSuggestions([]);
       return;
     }
-    const query = searchInput.trim().toUpperCase();
-    if (query.length === 0) {
-      setSuggestions([]);
-      return;
-    }
-    const filtered = SEARCH_DATABASE.filter(
-      item => item.symbol.includes(query) || item.name.toUpperCase().includes(query)
-    );
-    setSuggestions(filtered);
+    
+    const delayDebounce = setTimeout(async () => {
+      try {
+        const response = await api.get(`/api/stocks/search?q=${searchInput.trim()}`);
+        const mapped = response.data.map(item => ({
+          symbol: item.symbol,
+          name: item.name,
+          market: item.exchange
+        }));
+        setSuggestions(mapped);
+      } catch (err) {
+        console.error("Failed to fetch chart suggestions:", err);
+      }
+    }, 300);
+    
+    return () => clearTimeout(delayDebounce);
   }, [searchInput]);
 
   useEffect(() => {
