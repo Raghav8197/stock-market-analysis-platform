@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 import urllib.request
 import urllib.parse
 import json
+import pandas as pd
 
 router = APIRouter(
     prefix="/api/stocks",

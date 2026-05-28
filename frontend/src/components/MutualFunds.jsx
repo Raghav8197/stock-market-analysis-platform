@@ -29,20 +29,46 @@ const MutualFunds = () => {
   const searchContainerRef = React.useRef(null);
 
   useEffect(() => {
-    if (!searchInput) {
-      setSuggestions([]);
-      return;
-    }
     const query = searchInput.trim().toUpperCase();
-    if (query.length === 0) {
+    if (!query || query.length < 2 || query === selectedSymbol.toUpperCase()) {
       setSuggestions([]);
       return;
     }
-    const filtered = fundsList.filter(
+
+    // Step 1: Filter local list instantly
+    const localFiltered = fundsList.filter(
       item => item.symbol.toUpperCase().includes(query) || item.name.toUpperCase().includes(query)
     );
-    setSuggestions(filtered);
-  }, [searchInput, fundsList]);
+    setSuggestions(localFiltered);
+
+    // Step 2: Query API with debounce
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        const res = await api.get(`/api/stocks/search?q=${encodeURIComponent(query)}`);
+        const apiFiltered = res.data.filter(
+          item => 
+            (item.type && (item.type.toLowerCase().includes("fund") || item.type.toLowerCase().includes("etf"))) || 
+            item.symbol.toUpperCase().includes(".") ||
+            item.symbol.length >= 5
+        );
+        
+        // Merge lists, avoiding duplicates by symbol
+        setSuggestions(prev => {
+          const merged = [...prev];
+          apiFiltered.forEach(item => {
+            if (!merged.some(m => m.symbol.toUpperCase() === item.symbol.toUpperCase())) {
+              merged.push(item);
+            }
+          });
+          return merged;
+        });
+      } catch (err) {
+        console.error("Error searching mutual funds:", err);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchInput, fundsList, selectedSymbol]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -75,6 +101,8 @@ const MutualFunds = () => {
     try {
       const res = await api.get(`/api/funds/${symbol}/analysis`);
       setFundData(res.data);
+      // Refresh the sidebar list to include the newly loaded fund
+      fetchFundsList();
     } catch (err) {
       console.error(`Error fetching analysis for fund ${symbol}:`, err);
     } finally {
@@ -186,7 +214,7 @@ const MutualFunds = () => {
                         <span className="text-[9px] text-gray-400 block truncate">{item.name}</span>
                       </div>
                       <span className="text-[7px] px-1.5 py-0.5 rounded bg-gray-900 border border-gray-850 text-indigo-400 font-bold uppercase ml-2 shrink-0">
-                        {item.market}
+                        {item.market || (item.symbol.toUpperCase().endsWith(".NS") || item.symbol.toUpperCase().endsWith(".BO") ? "IN" : "US")}
                       </span>
                     </button>
                   ))}
@@ -387,6 +415,7 @@ const MutualFunds = () => {
                   <div className="space-y-5 py-2">
                     {[
                       { period: "1-Year Return", value: fundData.returns_1y, color: "bg-indigo-600 text-indigo-400" },
+                      { period: "2-Year Avg Return", value: fundData.returns_2y, color: "bg-sky-600 text-sky-450" },
                       { period: "3-Year Avg Return", value: fundData.returns_3y, color: "bg-emerald-600 text-emerald-400" },
                       { period: "5-Year Avg Return", value: fundData.returns_5y, color: "bg-teal-650 text-teal-400" }
                     ].map((ret, i) => {

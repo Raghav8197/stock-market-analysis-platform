@@ -14,7 +14,19 @@ export default {
         success: "#10B981", // Bullish emerald green
         danger: "#EF4444", // Bearish rose red
         warning: "#F59E0B", // Warning amber
-        textMuted: "#9CA3AF"
+        textMuted: "#9CA3AF",
+        gray: {
+          850: "#1b233a",
+        },
+        indigo: {
+          650: "#4338ca",
+        },
+        sky: {
+          450: "#38bdf8",
+        },
+        teal: {
+          650: "#0d9488",
+        }
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],

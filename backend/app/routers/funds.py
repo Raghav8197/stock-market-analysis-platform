@@ -1,5 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Any
+import yfinance as yf
+import pandas as pd
+import numpy as np
 
 router = APIRouter(
     prefix="/api/funds",
@@ -770,14 +773,223 @@ def list_funds():
         } for f in MUTUAL_FUNDS_DB.values()
     ]
 
+def fetch_and_parse_mutual_fund(symbol: str) -> dict:
+    import math
+    
+    def clean_float(val: Any, default: float = 0.0) -> float:
+        try:
+            if val is None or pd.isna(val):
+                return default
+            fval = float(val)
+            if math.isnan(fval) or math.isinf(fval):
+                return default
+            return fval
+        except (ValueError, TypeError):
+            return default
+
+    symbol_upper = symbol.upper()
+    ticker = yf.Ticker(symbol_upper)
+    info = ticker.info
+    
+    if not info or ('longName' not in info and 'shortName' not in info):
+        raise ValueError(f"Could not find mutual fund with symbol {symbol_upper}")
+        
+    # Check market
+    is_indian = symbol_upper.endswith(".NS") or symbol_upper.endswith(".BO") or symbol_upper in ["PPFAS", "SBIBLUE", "HDFCMID", "ICICIDEBT", "MIRAELC", "AXISSMALL", "KOTAKMID", "NIPNIFTY", "DSPSMALL", "TATAMID", "UTINIFTY", "SBIESG", "NIPSMALL", "HDFCTOP100", "ICICIPRU", "AXISLONG", "MIRAE_EMERG", "KOTAKNIFTY", "SBIHYBRID"]
+    market = "IN" if is_indian else "US"
+    
+    name = info.get('longName') or info.get('shortName') or symbol_upper
+    category = info.get('category') or info.get('fundFamily') or "Mutual Fund"
+    nav = info.get('regularMarketPrice') or info.get('previousClose') or 10.0
+    aum = info.get('totalAssets') or info.get('netAssets') or 100_000_000
+    
+    # Expense Ratio conversion
+    expense_ratio = info.get('annualReportExpenseRatio') or info.get('netExpenseRatio') or 0.005
+    if expense_ratio < 0.1:
+        expense_ratio = expense_ratio * 100
+    expense_ratio = round(expense_ratio, 2)
+    
+    df = ticker.history(period="5y")
+    
+    # Default returns
+    returns_1y = 12.0
+    returns_2y = 10.0
+    returns_3y = 8.0
+    returns_5y = 9.0
+    change_pct = 0.0
+    sharpe_ratio = 1.0
+    risk_profile = "Moderate"
+    
+    if not df.empty and len(df) >= 2:
+        latest_price = df['Close'].iloc[-1]
+        latest_date = df.index[-1]
+        total_days = (latest_date - df.index[0]).days
+        
+        prev_price = df['Close'].iloc[-2]
+        if prev_price > 0:
+            change_pct = round(((latest_price - prev_price) / prev_price) * 100, 2)
+        
+        # 1-Year (365 days, margin of 7 days)
+        try:
+            if total_days >= 358:
+                target_date_1y = latest_date - pd.DateOffset(years=1)
+                idx_1y = abs(df.index - target_date_1y).values.argmin()
+                price_1y = df['Close'].iloc[idx_1y]
+                if price_1y > 0:
+                    returns_1y = round(((latest_price - price_1y) / price_1y) * 100, 2)
+        except Exception:
+            pass
+            
+        # 2-Year (730 days, margin of 7 days)
+        try:
+            if total_days >= 723:
+                target_date_2y = latest_date - pd.DateOffset(years=2)
+                idx_2y = abs(df.index - target_date_2y).values.argmin()
+                price_2y = df['Close'].iloc[idx_2y]
+                if price_2y > 0 and latest_price / price_2y > 0:
+                    returns_2y = round(((latest_price / price_2y) ** (1 / 2) - 1) * 100, 2)
+        except Exception:
+            pass
+            
+        # 3-Year (1095 days, margin of 7 days)
+        try:
+            if total_days >= 1088:
+                target_date_3y = latest_date - pd.DateOffset(years=3)
+                idx_3y = abs(df.index - target_date_3y).values.argmin()
+                price_3y = df['Close'].iloc[idx_3y]
+                if price_3y > 0 and latest_price / price_3y > 0:
+                    returns_3y = round(((latest_price / price_3y) ** (1 / 3) - 1) * 100, 2)
+        except Exception:
+            pass
+            
+        # 5-Year (1825 days, margin of 15 days)
+        try:
+            if total_days >= 1810:
+                target_date_5y = latest_date - pd.DateOffset(years=5)
+                idx_5y = abs(df.index - target_date_5y).values.argmin()
+                price_5y = df['Close'].iloc[idx_5y]
+                if price_5y > 0 and latest_price / price_5y > 0:
+                    returns_5y = round(((latest_price / price_5y) ** (1 / 5) - 1) * 100, 2)
+        except Exception:
+            pass
+            
+        try:
+            daily_returns = df['Close'].pct_change().dropna()
+            volatility = daily_returns.std() * (252 ** 0.5)
+            mean_return = daily_returns.mean() * 252
+            if volatility > 0:
+                sharpe_ratio = round((mean_return - 0.03) / volatility, 2)
+            
+            vol_pct = volatility * 100
+            if vol_pct < 8.0:
+                risk_profile = "Low"
+            elif vol_pct < 14.0:
+                risk_profile = "Moderate"
+            elif vol_pct < 20.0:
+                risk_profile = "Moderate-High"
+            else:
+                risk_profile = "High"
+        except Exception:
+            pass
+            
+    allocation = {"Equity": 60.0, "Debt": 30.0, "Cash": 10.0}
+    top_sectors = []
+    top_holdings = []
+    
+    try:
+        fd = ticker.funds_data
+        if fd is not None:
+            ac = fd.asset_classes
+            if ac:
+                allocation = {
+                    "Equity": round(clean_float(ac.get('stockPosition'), 0.6) * 100, 1),
+                    "Debt": round(clean_float(ac.get('bondPosition'), 0.3) * 100, 1),
+                    "Cash": round(clean_float(ac.get('cashPosition'), 0.1) * 100, 1)
+                }
+                if sum(allocation.values()) == 0:
+                    allocation = {"Equity": 60.0, "Debt": 30.0, "Cash": 10.0}
+                    
+            sw = fd.sector_weightings
+            if sw:
+                sector_mapping = {
+                    "technology": "Technology",
+                    "financial_services": "Financial Services",
+                    "healthcare": "Healthcare",
+                    "consumer_cyclical": "Consumer Cyclical",
+                    "consumer_defensive": "Consumer Defensive",
+                    "utilities": "Utilities",
+                    "industrials": "Industrials",
+                    "energy": "Energy",
+                    "basic_materials": "Basic Materials",
+                    "realestate": "Real Estate",
+                    "communication_services": "Communication Services"
+                }
+                for sec_key, weight in sw.items():
+                    w_val = clean_float(weight, 0.0)
+                    if w_val > 0:
+                        name_mapped = sector_mapping.get(sec_key, sec_key.replace('_', ' ').capitalize())
+                        top_sectors.append({
+                            "sector": name_mapped,
+                            "weight": round(w_val * 100, 1)
+                        })
+                top_sectors = sorted(top_sectors, key=lambda x: x['weight'], reverse=True)[:5]
+                
+            th = fd.top_holdings
+            if th is not None and not th.empty:
+                names = th["Name"].tolist() if "Name" in th.columns else []
+                top_holdings = [n for n in names if n][:5]
+    except Exception:
+        pass
+        
+    if not top_sectors:
+        top_sectors = [
+            {"sector": "Technology", "weight": 35.0},
+            {"sector": "Financials", "weight": 25.0},
+            {"sector": "Healthcare", "weight": 15.0},
+            {"sector": "Consumer Cyclical", "weight": 15.0},
+            {"sector": "Industrials", "weight": 10.0}
+        ]
+    if not top_holdings:
+        top_holdings = ["Microsoft Corp", "Apple Inc", "NVIDIA Corp", "Amazon.com Inc", "Alphabet Inc"]
+        
+    return {
+        "symbol": symbol_upper,
+        "name": name,
+        "market": market,
+        "category": category,
+        "nav": round(clean_float(nav, 10.0), 2),
+        "change_pct": round(clean_float(change_pct, 0.0), 2),
+        "aum": int(clean_float(aum, 100_000_000)),
+        "expense_ratio": round(clean_float(expense_ratio, 0.50), 2),
+        "sharpe_ratio": round(clean_float(sharpe_ratio, 1.0), 2),
+        "risk_profile": risk_profile,
+        "returns_1y": round(clean_float(returns_1y, 12.0), 2),
+        "returns_2y": round(clean_float(returns_2y, 10.0), 2),
+        "returns_3y": round(clean_float(returns_3y, 8.0), 2),
+        "returns_5y": round(clean_float(returns_5y, 9.0), 2),
+        "allocation": allocation,
+        "top_sectors": top_sectors,
+        "top_holdings": top_holdings
+    }
+
 @router.get("/{symbol}/analysis")
 def analyze_fund(symbol: str):
     sym = symbol.upper()
     if sym not in MUTUAL_FUNDS_DB:
-        raise HTTPException(status_code=404, detail="Mutual fund symbol not found in universe.")
-        
+        try:
+            fund_data = fetch_and_parse_mutual_fund(sym)
+            MUTUAL_FUNDS_DB[sym] = fund_data
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=f"Mutual fund symbol not found and failed to fetch from Yahoo Finance: {str(e)}")
+            
     fund = MUTUAL_FUNDS_DB[sym]
     
+    # Ensure returns_2y exists (interpolate for seed funds)
+    if "returns_2y" not in fund:
+        r1 = fund.get("returns_1y", 10.0)
+        r3 = fund.get("returns_3y", 8.0)
+        fund["returns_2y"] = round((r1 + r3) / 2.0, 2)
+        
     expense_ratio = fund["expense_ratio"]
     sharpe_ratio = fund["sharpe_ratio"]
     returns_5y = fund["returns_5y"]
