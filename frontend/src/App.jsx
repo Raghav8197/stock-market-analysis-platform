@@ -151,8 +151,8 @@ function App() {
         onOpenAuth={() => setAuthOpen(true)}
       />
 
-      {/* Main Viewport panel */}
-      <main className="flex-1 p-6 overflow-hidden flex flex-col">
+      {/* Main Viewport panel — pb-20 on mobile leaves room for bottom nav */}
+      <main className="flex-1 p-4 md:p-6 overflow-y-auto overflow-x-hidden flex flex-col pb-20 md:pb-6">
         {renderTabContent()}
       </main>
 

@@ -132,7 +132,7 @@ const MutualFunds = () => {
   });
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden space-y-6">
+    <div className="flex-1 flex flex-col overflow-hidden space-y-4 md:space-y-6">
       
       {/* Header */}
       <div className="flex items-center justify-between border-b border-gray-800 pb-4 shrink-0">
@@ -146,11 +146,11 @@ const MutualFunds = () => {
         </div>
       </div>
 
-      {/* Main Content Layout */}
-      <div className="flex-1 flex gap-6 overflow-hidden min-h-0">
+      {/* Main Content Layout — column on mobile, row on desktop */}
+      <div className="flex-1 flex flex-col md:flex-row gap-4 md:gap-6 overflow-hidden min-h-0">
         
-        {/* Left Fund Selector Sidebar */}
-        <div className="w-72 bg-darkCard/55 border border-gray-850 rounded-2xl flex flex-col overflow-hidden shrink-0">
+        {/* Left Fund Selector Sidebar — full-width on mobile, fixed w-72 on desktop */}
+        <div className="w-full md:w-72 bg-darkCard/55 border border-gray-850 rounded-2xl flex flex-col overflow-hidden shrink-0 max-h-64 md:max-h-full">
           {/* Search Box */}
           <div ref={searchContainerRef} className="p-4 border-b border-gray-850 relative z-30">
             <div className="relative">

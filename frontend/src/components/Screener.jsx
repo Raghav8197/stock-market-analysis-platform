@@ -74,20 +74,20 @@ const Screener = ({ onSelectStock }) => {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between border-b border-gray-800 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-4">
         <div>
           <span className="text-xs font-bold text-indigo-400 uppercase tracking-widest font-outfit">Screener Engine</span>
-          <h2 className="text-2xl font-bold text-white font-outfit mt-0.5">Stock Screener</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-white font-outfit mt-0.5">Stock Screener</h2>
         </div>
         <button
           onClick={runScreener}
           disabled={loading}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 px-4 py-2 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all duration-200 glow-indigo"
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 px-4 py-2.5 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all duration-200 glow-indigo w-full sm:w-auto justify-center"
         >
           {loading ? (
-            <Loader2 className="w-4.5 h-4.5 animate-spin" />
+            <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
             <RefreshCw className="w-4 h-4" />
           )}
@@ -103,7 +103,7 @@ const Screener = ({ onSelectStock }) => {
         </h3>
         <p className="text-xs text-gray-400 mb-4">Enter any symbol (e.g. RELIANCE, TCS, AAPL, TSLA, MSFT) to run technical indicators and fit the machine learning Random Forest classifier instantly.</p>
         
-        <form onSubmit={handleAnalyzeSearch} className="flex gap-3 max-w-md">
+        <form onSubmit={handleAnalyzeSearch} className="flex flex-col sm:flex-row gap-3">
           <input
             type="text"
             placeholder="Enter symbol (e.g. MSFT, TCS)..."
@@ -114,7 +114,7 @@ const Screener = ({ onSelectStock }) => {
           <button 
             type="submit"
             disabled={searchLoading}
-            className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white text-xs font-bold uppercase tracking-wider px-6 py-3 rounded-xl transition-colors shrink-0 flex items-center gap-2 cursor-pointer"
+            className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white text-xs font-bold uppercase tracking-wider px-6 py-3 rounded-xl transition-colors shrink-0 flex items-center justify-center gap-2 cursor-pointer"
           >
             {searchLoading && <Loader2 className="w-4 h-4 animate-spin" />}
             <span>Analyze</span>
@@ -195,7 +195,7 @@ const Screener = ({ onSelectStock }) => {
 
 
       {/* Filter Options Bar */}
-      <div className="glass-panel p-6 rounded-2xl grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="glass-panel p-4 md:p-6 rounded-2xl grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         {/* Market Category */}
         <div className="space-y-2">
           <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Market</label>
@@ -259,90 +259,130 @@ const Screener = ({ onSelectStock }) => {
       </div>
 
       {/* Screen Results */}
-      <div className="glass-panel p-6 rounded-2xl">
+      <div className="glass-panel p-4 md:p-6 rounded-2xl">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
-            <p className="text-sm text-gray-400 mt-4 font-semibold">Scanning stock metrics & checking active candles...</p>
+            <p className="text-sm text-gray-400 mt-4 font-semibold text-center">Scanning stock metrics &amp; checking active candles...</p>
           </div>
         ) : results.length === 0 ? (
           <div className="text-center py-16 text-sm text-gray-500">
             No matching symbols found. Try relaxing the filter parameters.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm border-collapse">
-              <thead>
-                <tr className="border-b border-gray-800 text-[10px] uppercase tracking-widest text-gray-500 font-semibold">
-                  <th className="pb-3">Ticker</th>
-                  <th className="pb-3 text-right">Price</th>
-                  <th className="pb-3 text-right">24h Change</th>
-                  <th className="pb-3 text-right">RSI (14)</th>
-                  <th className="pb-3">Patterns Detected</th>
-                  <th className="pb-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800/40">
-                {results.map((stock) => (
-                  <tr key={stock.symbol} className="hover:bg-gray-800/10 transition-colors group">
-                    <td className="py-4 font-bold text-white tracking-wider font-outfit">
-                      {stock.symbol}
-                      <span className="text-[10px] text-gray-500 font-medium block mt-0.5">{stock.name}</span>
-                    </td>
-                    <td className="py-4 text-right font-semibold font-outfit text-white">
+          <>
+            {/* Mobile card layout */}
+            <div className="flex flex-col gap-3 md:hidden">
+              {results.map((stock) => (
+                <div key={stock.symbol} className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="font-bold text-white tracking-wider font-outfit">{stock.symbol}</span>
+                      <span className="text-[10px] text-gray-500 block mt-0.5">{stock.name}</span>
+                    </div>
+                    <button
+                      onClick={() => onSelectStock(stock.symbol)}
+                      className="bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white p-2 border border-indigo-500/20 rounded-xl transition-all"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-bold font-outfit text-white">
                       {isIndianSymbol(stock.symbol) ? "₹" : "$"}{stock.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-4 text-right font-semibold font-outfit">
-                      <span className={`inline-flex items-center gap-1 ${stock.change_pct >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                        {stock.change_pct >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                        {stock.change_pct >= 0 ? "+" : ""}{stock.change_pct.toFixed(2)}%
-                      </span>
-                    </td>
-                    <td className="py-4 text-right font-medium text-gray-300 font-outfit">
-                      <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
-                        stock.rsi < 30 ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/10" : 
-                        stock.rsi > 70 ? "bg-rose-950/40 text-rose-400 border border-rose-500/10" : 
-                        "text-gray-400"
-                      }`}>
-                        {stock.rsi}
-                      </span>
-                    </td>
-                    <td className="py-4">
-                      {stock.patterns_detected.length === 0 ? (
-                        <span className="text-gray-600 text-xs">-</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {stock.patterns_detected.map(pat => (
-                            <span 
-                              key={pat} 
-                              className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
-                                ["Hammer", "Bullish_Engulfing", "Double_Bottom"].includes(pat)
+                    </span>
+                    <span className={`inline-flex items-center gap-1 text-sm font-bold ${stock.change_pct >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                      {stock.change_pct >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                      {stock.change_pct >= 0 ? "+" : ""}{stock.change_pct.toFixed(2)}%
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
+                      stock.rsi < 30 ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/10" :
+                      stock.rsi > 70 ? "bg-rose-950/40 text-rose-400 border border-rose-500/10" :
+                      "bg-gray-900 text-gray-400 border border-gray-800"
+                    }`}>RSI {stock.rsi}</span>
+                    {stock.patterns_detected.map(pat => (
+                      <span key={pat} className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                        ["Hammer","Bullish_Engulfing","Double_Bottom"].includes(pat)
+                          ? "bg-emerald-950/30 text-emerald-400 border-emerald-500/10"
+                          : ["Doji"].includes(pat)
+                          ? "bg-amber-950/30 text-amber-400 border-amber-500/10"
+                          : "bg-rose-950/30 text-rose-400 border-rose-500/10"
+                      }`}>{pat.replace("_"," ")}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop table layout */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800 text-[10px] uppercase tracking-widest text-gray-500 font-semibold">
+                    <th className="pb-3">Ticker</th>
+                    <th className="pb-3 text-right">Price</th>
+                    <th className="pb-3 text-right">24h Change</th>
+                    <th className="pb-3 text-right">RSI (14)</th>
+                    <th className="pb-3">Patterns Detected</th>
+                    <th className="pb-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/40">
+                  {results.map((stock) => (
+                    <tr key={stock.symbol} className="hover:bg-gray-800/10 transition-colors group">
+                      <td className="py-4 font-bold text-white tracking-wider font-outfit">
+                        {stock.symbol}
+                        <span className="text-[10px] text-gray-500 font-medium block mt-0.5">{stock.name}</span>
+                      </td>
+                      <td className="py-4 text-right font-semibold font-outfit text-white">
+                        {isIndianSymbol(stock.symbol) ? "₹" : "$"}{stock.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-4 text-right font-semibold font-outfit">
+                        <span className={`inline-flex items-center gap-1 ${stock.change_pct >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                          {stock.change_pct >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                          {stock.change_pct >= 0 ? "+" : ""}{stock.change_pct.toFixed(2)}%
+                        </span>
+                      </td>
+                      <td className="py-4 text-right font-medium text-gray-300 font-outfit">
+                        <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
+                          stock.rsi < 30 ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/10" :
+                          stock.rsi > 70 ? "bg-rose-950/40 text-rose-400 border border-rose-500/10" :
+                          "text-gray-400"
+                        }`}>{stock.rsi}</span>
+                      </td>
+                      <td className="py-4">
+                        {stock.patterns_detected.length === 0 ? (
+                          <span className="text-gray-600 text-xs">-</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {stock.patterns_detected.map(pat => (
+                              <span key={pat} className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                                ["Hammer","Bullish_Engulfing","Double_Bottom"].includes(pat)
                                   ? "bg-emerald-950/30 text-emerald-400 border-emerald-500/10"
                                   : ["Doji"].includes(pat)
                                   ? "bg-amber-950/30 text-amber-400 border-amber-500/10"
                                   : "bg-rose-950/30 text-rose-400 border-rose-500/10"
-                              }`}
-                            >
-                              {pat.replace("_", " ")}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-4 text-right">
-                      <button
-                        onClick={() => onSelectStock(stock.symbol)}
-                        className="bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white p-2 border border-indigo-500/20 rounded-xl transition-all group-hover:scale-105"
-                        title="View Interactive Chart"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                              }`}>{pat.replace("_"," ")}</span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-4 text-right">
+                        <button
+                          onClick={() => onSelectStock(stock.symbol)}
+                          className="bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white p-2 border border-indigo-500/20 rounded-xl transition-all group-hover:scale-105"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -350,3 +390,4 @@ const Screener = ({ onSelectStock }) => {
 };
 
 export default Screener;
+;

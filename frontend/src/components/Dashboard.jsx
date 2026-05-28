@@ -145,7 +145,7 @@ const Dashboard = ({ onSelectStock, onOpenAuth }) => {
   );
 
   return (
-    <div className="space-y-6 overflow-y-auto max-h-[calc(100vh-4rem)] pr-2">
+    <div className="space-y-4 md:space-y-6">
       {/* Upper stats block */}
       <div className="flex items-center justify-between border-b border-gray-800 pb-4">
         <div>
@@ -159,24 +159,24 @@ const Dashboard = ({ onSelectStock, onOpenAuth }) => {
       </div>
 
       {/* Market Selector Tab Bar */}
-      <div className="flex gap-2 border-b border-gray-900 pb-2">
+      <div className="flex gap-1.5 md:gap-2 border-b border-gray-900 pb-2 overflow-x-auto">
         {["ALL", "IN", "US", "CRYPTO", "FOREX"].map((m) => (
           <button
             key={m}
             onClick={() => setActiveMarket(m)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition-colors ${
+            className={`px-3 md:px-4 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition-colors whitespace-nowrap ${
               activeMarket === m 
                 ? "bg-indigo-600 text-white glow-indigo" 
                 : "bg-darkCard hover:bg-gray-800 text-gray-400"
             }`}
           >
-            {m === "IN" ? "Indian Markets" : m === "US" ? "US Markets" : m === "CRYPTO" ? "Crypto" : m === "FOREX" ? "Forex" : "All Markets"}
+            {m === "IN" ? "India" : m === "US" ? "US" : m === "CRYPTO" ? "Crypto" : m === "FOREX" ? "Forex" : "All"}
           </button>
         ))}
       </div>
 
-      {/* Indices Grid Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Indices Grid Cards — 2 cols on mobile, 4 on desktop */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         {filteredIndices.map((idx) => {
           const liveData = prices[idx.id] || prices[idx.yf] || prices[idx.id.toUpperCase()] || prices[idx.yf.toUpperCase()];
           const priceVal = liveData?.price;
@@ -287,58 +287,66 @@ const Dashboard = ({ onSelectStock, onOpenAuth }) => {
             Watchlist is empty. Search and add symbols like <span className="text-indigo-400 font-bold">AAPL</span>, <span className="text-indigo-400 font-bold">TCS</span>, or <span className="text-indigo-400 font-bold">TSLA</span> above!
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm border-collapse">
-              <thead>
-                <tr className="border-b border-gray-800 text-[10px] uppercase tracking-widest text-gray-500 font-semibold">
-                  <th className="pb-3">Ticker Symbol</th>
-                  <th className="pb-3 text-right">Last Price</th>
-                  <th className="pb-3 text-right">Tick Update</th>
-                  <th className="pb-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800/50">
-                {watchlist.map((item) => {
-                  const live = prices[item.symbol];
-                  const price = live?.price || "Fetching...";
-                  const time = live?.timestamp || "--:--:--";
-                  const flashClass = getPriceFlashClass(item.symbol);
-                  
-                  return (
-                    <tr key={item.id} className="group hover:bg-gray-800/10 transition-colors">
-                      <td className="py-3 font-semibold text-white tracking-wider font-outfit">
-                        {item.symbol}
-                      </td>
-                      <td className={`py-3 text-right font-semibold font-outfit ${flashClass}`}>
-                        {typeof price === "number" ? `${isIndianSymbol(item.symbol) ? "₹" : "$"}${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : price}
-                      </td>
-                      <td className="py-3 text-right text-xs text-gray-500">
-                        {time}
-                      </td>
-                      <td className="py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => onSelectStock(item.symbol)}
-                            className="bg-gray-850 hover:bg-indigo-600/20 text-gray-400 hover:text-indigo-400 p-2 rounded-lg transition-colors border border-gray-800"
-                            title="Interactive Chart"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleRemoveWatchlist(item.symbol)}
-                            className="bg-gray-850 hover:bg-rose-950/40 text-gray-500 hover:text-rose-400 p-2 rounded-lg transition-colors border border-gray-800"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Mobile card layout */}
+            <div className="flex flex-col gap-2 md:hidden">
+              {watchlist.map((item) => {
+                const live = prices[item.symbol];
+                const price = live?.price;
+                const flashClass = getPriceFlashClass(item.symbol);
+                return (
+                  <div key={item.id} className="flex items-center justify-between py-2.5 px-1 border-b border-gray-800/40 last:border-0">
+                    <div>
+                      <span className="font-bold text-white text-sm tracking-wider font-outfit">{item.symbol}</span>
+                      <span className={`text-xs font-semibold block font-outfit mt-0.5 ${flashClass}`}>
+                        {typeof price === "number" ? `${isIndianSymbol(item.symbol) ? "₹" : "$"}${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Fetching..."}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => onSelectStock(item.symbol)} className="bg-gray-850 hover:bg-indigo-600/20 text-gray-400 hover:text-indigo-400 p-2 rounded-lg transition-colors border border-gray-800"><Eye className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => handleRemoveWatchlist(item.symbol)} className="bg-gray-850 hover:bg-rose-950/40 text-gray-500 hover:text-rose-400 p-2 rounded-lg transition-colors border border-gray-800"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Desktop table layout */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800 text-[10px] uppercase tracking-widest text-gray-500 font-semibold">
+                    <th className="pb-3">Ticker Symbol</th>
+                    <th className="pb-3 text-right">Last Price</th>
+                    <th className="pb-3 text-right">Tick Update</th>
+                    <th className="pb-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/50">
+                  {watchlist.map((item) => {
+                    const live = prices[item.symbol];
+                    const price = live?.price || "Fetching...";
+                    const time = live?.timestamp || "--:--:--";
+                    const flashClass = getPriceFlashClass(item.symbol);
+                    return (
+                      <tr key={item.id} className="group hover:bg-gray-800/10 transition-colors">
+                        <td className="py-3 font-semibold text-white tracking-wider font-outfit">{item.symbol}</td>
+                        <td className={`py-3 text-right font-semibold font-outfit ${flashClass}`}>
+                          {typeof price === "number" ? `${isIndianSymbol(item.symbol) ? "₹" : "$"}${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : price}
+                        </td>
+                        <td className="py-3 text-right text-xs text-gray-500">{time}</td>
+                        <td className="py-3 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => onSelectStock(item.symbol)} className="bg-gray-850 hover:bg-indigo-600/20 text-gray-400 hover:text-indigo-400 p-2 rounded-lg transition-colors border border-gray-800" title="Interactive Chart"><Eye className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => handleRemoveWatchlist(item.symbol)} className="bg-gray-850 hover:bg-rose-950/40 text-gray-500 hover:text-rose-400 p-2 rounded-lg transition-colors border border-gray-800" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
