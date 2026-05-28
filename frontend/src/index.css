@@ -62,3 +62,13 @@ body {
 .glow-indigo {
   box-shadow: 0 0 15px rgba(99, 102, 241, 0.2);
 }
+
+.glow-indigo-sm {
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.12);
+}
+
+/* ── Skeleton shimmer animation ──────────────────────────── */
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}

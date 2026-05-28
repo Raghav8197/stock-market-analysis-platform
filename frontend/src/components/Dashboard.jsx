@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useLiveData } from "../context/LiveDataContext";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
+import { SkeletonBlock } from "./Skeleton";
 
 const isIndianSymbol = (symbol) => {
   if (!symbol) return false;
@@ -271,7 +272,16 @@ const Dashboard = ({ onSelectStock, onOpenAuth }) => {
             </button>
           </div>
         ) : watchlistLoading ? (
-          <div className="text-center py-12 text-sm text-gray-500">Loading Watchlist Database...</div>
+          <div className="space-y-2 py-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 py-3 border-b border-gray-800/40">
+                <SkeletonBlock className="h-4 w-16" />
+                <SkeletonBlock className="h-4 flex-1" />
+                <SkeletonBlock className="h-4 w-20" />
+                <SkeletonBlock className="h-8 w-16 rounded-lg" />
+              </div>
+            ))}
+          </div>
         ) : watchlist.length === 0 ? (
           <div className="text-center py-12 text-sm text-gray-500 border border-dashed border-gray-800 rounded-xl">
             Watchlist is empty. Search and add symbols like <span className="text-indigo-400 font-bold">AAPL</span>, <span className="text-indigo-400 font-bold">TCS</span>, or <span className="text-indigo-400 font-bold">TSLA</span> above!
