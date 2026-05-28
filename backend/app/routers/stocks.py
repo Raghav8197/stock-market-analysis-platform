@@ -5,6 +5,10 @@ from app.database import get_db
 from app import models, schemas, auth, data_fetcher, ai_signal
 from app.patterns import scan_patterns
 from app.indicators import add_all_indicators
+from concurrent.futures import ThreadPoolExecutor
+import urllib.request
+import urllib.parse
+import json
 
 router = APIRouter(
     prefix="/api/stocks",
@@ -13,9 +17,12 @@ router = APIRouter(
 
 # Screener Stock Universe
 SCREENER_UNIVERSE = [
-    "AAPL", "MSFT", "TSLA", "NVDA", "AMZN", 
-    "RELIANCE", "TCS", "INFY", "HDFCBANK", 
-    "BTC", "ETH"
+    # US Stocks
+    "AAPL", "MSFT", "TSLA", "NVDA", "AMZN", "GOOGL", "META", "NFLX", "AMD",
+    # Indian Stocks
+    "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ADANIPOWER.NS", "OLAELEC.NS", "SBIN.NS", "BHARTIARTL.NS",
+    # Crypto
+    "BTC-USD", "ETH-USD"
 ]
 
 @router.get("/{symbol}/history")
@@ -93,6 +100,58 @@ def get_stock_analysis(
             detail=f"Failed to run AI analysis: {str(e)}"
         )
 
+@router.get("/search")
+def search_stocks(q: str = Query(..., min_length=1, description="Search query")):
+    try:
+        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(q)}&newsCount=0"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode())
+            
+        quotes = data.get("quotes", [])
+        results = []
+        for quote in quotes:
+            symbol = quote.get("symbol")
+            if not symbol:
+                continue
+                
+            quote_type = quote.get("quoteType", "")
+            if quote_type not in ["EQUITY", "ETF", "INDEX", "CRYPTOCURRENCY", "FOREX", "MUTUALFUND"]:
+                continue
+                
+            results.append({
+                "symbol": symbol,
+                "name": quote.get("longname") or quote.get("shortname") or symbol,
+                "exchange": quote.get("exchDisp") or quote.get("exchange") or "",
+                "type": quote.get("typeDisp") or quote.get("quoteType") or ""
+            })
+            
+        return results
+    except Exception as e:
+        print(f"Yahoo Search failed: {e}")
+        query = q.lower()
+        local_db = [
+            {"symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ", "type": "Equity"},
+            {"symbol": "MSFT", "name": "Microsoft Corporation", "exchange": "NASDAQ", "type": "Equity"},
+            {"symbol": "TSLA", "name": "Tesla, Inc.", "exchange": "NASDAQ", "type": "Equity"},
+            {"symbol": "NVDA", "name": "NVIDIA Corporation", "exchange": "NASDAQ", "type": "Equity"},
+            {"symbol": "AMZN", "name": "Amazon.com, Inc.", "exchange": "NASDAQ", "type": "Equity"},
+            {"symbol": "RELIANCE.NS", "name": "Reliance Industries Limited", "exchange": "NSE", "type": "Equity"},
+            {"symbol": "TCS.NS", "name": "Tata Consultancy Services Limited", "exchange": "NSE", "type": "Equity"},
+            {"symbol": "INFY.NS", "name": "Infosys Limited", "exchange": "NSE", "type": "Equity"},
+            {"symbol": "HDFCBANK.NS", "name": "HDFC Bank Limited", "exchange": "NSE", "type": "Equity"},
+            {"symbol": "ADANIPOWER.NS", "name": "Adani Power Limited", "exchange": "NSE", "type": "Equity"},
+            {"symbol": "OLAELEC.NS", "name": "Ola Electric Mobility Limited", "exchange": "NSE", "type": "Equity"},
+            {"symbol": "BTC-USD", "name": "Bitcoin USD", "exchange": "CCC", "type": "Cryptocurrency"},
+            {"symbol": "ETH-USD", "name": "Ethereum USD", "exchange": "CCC", "type": "Cryptocurrency"}
+        ]
+        
+        filtered = [
+            item for item in local_db
+            if query in item["symbol"].lower() or query in item["name"].lower()
+        ]
+        return filtered
+
 @router.get("/screener/scan")
 def screen_stocks(
     market: str = Query("ALL", description="ALL, US, IN"),
@@ -103,14 +162,16 @@ def screen_stocks(
     results = []
     
     # Filter Universe by market if selected
-    # Indian equities have .NS suffix or RELIANCE/TCS/INFY/HDFCBANK
+    filtered_symbols = []
     for symbol in SCREENER_UNIVERSE:
-        is_indian = symbol in ["RELIANCE", "TCS", "INFY", "HDFCBANK"]
+        is_indian = symbol.endswith(".NS") or symbol.endswith(".BO") or symbol in ["RELIANCE", "TCS", "INFY", "HDFCBANK"]
         if market == "US" and is_indian:
             continue
         if market == "IN" and not is_indian:
             continue
-            
+        filtered_symbols.append(symbol)
+
+    def scan_single_stock(symbol):
         try:
             df = data_fetcher.fetch_history(symbol, timeframe="1D")
             df_ind = add_all_indicators(df)
@@ -120,19 +181,16 @@ def screen_stocks(
             prev = df_full.iloc[-2] if len(df_full) > 1 else latest
             
             # Apply Filters
-            match = True
-            
             # 1. RSI Filter
             rsi_val = latest.get("RSI", 50)
             if rsi_filter == "oversold" and rsi_val >= 35:
-                match = False
+                return None
             elif rsi_filter == "overbought" and rsi_val <= 65:
-                match = False
+                return None
                 
             # 2. Pattern Filter
             if pattern_filter:
                 pattern_col = f"Pattern_{pattern_filter.title()}"
-                # Handle names like Bullish_Engulfing or Head_Shoulders
                 if pattern_filter.lower() == "bullish_engulfing":
                     pattern_col = "Pattern_Bullish_Engulfing"
                 elif pattern_filter.lower() == "bearish_engulfing":
@@ -145,34 +203,41 @@ def screen_stocks(
                     pattern_col = "Pattern_Head_Shoulders"
                     
                 if not latest.get(pattern_col, False):
-                    match = False
+                    return None
                     
             # 3. Volume Breakout
             vol_sma = df_full["Volume"].rolling(20).mean().iloc[-1]
             if volume_breakout and vol_sma > 0:
                 if latest["Volume"] < 2.0 * vol_sma:
-                    match = False
+                    return None
                     
-            if match:
-                # Get current price and change
-                close = latest["Close"]
-                prev_close = prev["Close"]
-                change_pct = ((close - prev_close) / prev_close) * 100
-                
-                results.append({
-                    "symbol": symbol,
-                    "name": data_fetcher.resolve_ticker(symbol),
-                    "price": round(close, 2),
-                    "change_pct": round(change_pct, 2),
-                    "volume": int(latest["Volume"]),
-                    "rsi": round(rsi_val, 1) if not pd.isna(rsi_val) else 50.0,
-                    "patterns_detected": [
-                        pat for pat in ["Doji", "Hammer", "Bullish_Engulfing", "Bearish_Engulfing", "Double_Top", "Double_Bottom", "Head_Shoulders"]
-                        if latest.get(f"Pattern_{pat}", False)
-                    ]
-                })
+            # Get current price and change
+            close = latest["Close"]
+            prev_close = prev["Close"]
+            change_pct = ((close - prev_close) / prev_close) * 100
+            
+            return {
+                "symbol": symbol,
+                "name": data_fetcher.resolve_ticker(symbol),
+                "price": round(close, 2),
+                "change_pct": round(change_pct, 2),
+                "volume": int(latest["Volume"]),
+                "rsi": round(rsi_val, 1) if not pd.isna(rsi_val) else 50.0,
+                "patterns_detected": [
+                    pat for pat in ["Doji", "Hammer", "Bullish_Engulfing", "Bearish_Engulfing", "Double_Top", "Double_Bottom", "Head_Shoulders"]
+                    if latest.get(f"Pattern_{pat}", False)
+                ]
+            }
         except Exception:
-            continue
+            return None
+
+    # Run scans in parallel using ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(len(filtered_symbols), 8)) as executor:
+        scan_results = executor.map(scan_single_stock, filtered_symbols)
+        
+    for res in scan_results:
+        if res is not None:
+            results.append(res)
             
     return results
 

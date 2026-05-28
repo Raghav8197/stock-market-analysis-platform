@@ -34,6 +34,8 @@ const Dashboard = ({ onSelectStock, onOpenAuth }) => {
   const [newSymbol, setNewSymbol] = useState("");
   const [watchlistLoading, setWatchlistLoading] = useState(false);
   const [priceHistory, setPriceHistory] = useState({}); // Tracking old prices to flash color
+  const [watchlistSuggestions, setWatchlistSuggestions] = useState([]);
+  const [showWatchlistSuggestions, setShowWatchlistSuggestions] = useState(false);
 
   // Predefined Index Tick list configuration
   const indices = [
@@ -107,19 +109,44 @@ const Dashboard = ({ onSelectStock, onOpenAuth }) => {
     }
   }, [prices]);
 
+  const triggerAddWatchlist = async (symbolToAdd) => {
+    try {
+      const res = await api.post("/api/stocks/watchlist/add", { symbol: symbolToAdd });
+      setWatchlist(prev => {
+        if (prev.some(item => item.symbol === res.data.symbol)) return prev;
+        return [...prev, res.data];
+      });
+      subscribeSymbols([symbolToAdd]);
+      setNewSymbol("");
+    } catch (err) {
+      alert("Failed to add symbol.");
+    }
+  };
+
   const handleAddWatchlist = async (e) => {
     e.preventDefault();
     if (!newSymbol || !user) return;
-    const sym = newSymbol.trim().toUpperCase();
-    try {
-      const res = await api.post("/api/stocks/watchlist/add", { symbol: sym });
-      setWatchlist(prev => [...prev, res.data]);
-      subscribeSymbols([sym]);
-      setNewSymbol("");
-    } catch (err) {
-      alert("Failed to add symbol. Check spelling.");
-    }
+    triggerAddWatchlist(newSymbol.trim().toUpperCase());
   };
+
+  // Fetch search suggestions for watchlist addition
+  useEffect(() => {
+    if (!newSymbol || newSymbol.trim().length < 2) {
+      setWatchlistSuggestions([]);
+      return;
+    }
+    
+    const delayDebounce = setTimeout(async () => {
+      try {
+        const response = await api.get(`/api/stocks/search?q=${newSymbol.trim()}`);
+        setWatchlistSuggestions(response.data);
+      } catch (err) {
+        console.error("Failed to fetch watchlist suggestions:", err);
+      }
+    }, 300);
+    
+    return () => clearTimeout(delayDebounce);
+  }, [newSymbol]);
 
   const handleRemoveWatchlist = async (sym) => {
     try {
@@ -237,20 +264,51 @@ const Dashboard = ({ onSelectStock, onOpenAuth }) => {
             <p className="text-xs text-gray-400">Symbols synced to your database user profile</p>
           </div>
           {user && (
-            <form onSubmit={handleAddWatchlist} className="flex gap-2">
+            <form onSubmit={handleAddWatchlist} className="flex gap-2 relative">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
                 <input
                   type="text"
                   placeholder="Add Symbol (e.g. AAPL, TCS)"
                   value={newSymbol}
-                  onChange={(e) => setNewSymbol(e.target.value)}
+                  onChange={(e) => {
+                    setNewSymbol(e.target.value);
+                    setShowWatchlistSuggestions(true);
+                  }}
+                  onFocus={() => setShowWatchlistSuggestions(true)}
+                  onBlur={() => {
+                    setTimeout(() => setShowWatchlistSuggestions(false), 200);
+                  }}
                   className="bg-gray-950/80 border border-gray-800 text-xs text-white rounded-xl py-2 pl-9 pr-4 focus:outline-none focus:border-indigo-600 transition-colors uppercase w-48"
                 />
+                
+                {showWatchlistSuggestions && watchlistSuggestions.length > 0 && (
+                  <div className="absolute left-0 mt-2 w-64 bg-gray-950 border border-gray-800 rounded-xl max-h-60 overflow-y-auto z-50 shadow-2xl divide-y divide-gray-900">
+                    {watchlistSuggestions.map((s) => (
+                      <div
+                        key={s.symbol}
+                        onClick={() => {
+                          setNewSymbol(s.symbol);
+                          setShowWatchlistSuggestions(false);
+                          triggerAddWatchlist(s.symbol);
+                        }}
+                        className="p-2.5 hover:bg-indigo-600/25 cursor-pointer flex justify-between items-center transition-colors text-left"
+                      >
+                        <div>
+                          <span className="font-bold text-white text-[11px] block truncate max-w-[150px]">{s.name}</span>
+                          <span className="text-[9px] text-gray-550">{s.symbol}</span>
+                        </div>
+                        <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-gray-900 border border-gray-800 font-bold uppercase text-gray-400">
+                          {s.exchange}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <button 
                 type="submit" 
-                className="bg-indigo-600 hover:bg-indigo-500 p-2 rounded-xl text-white transition-colors"
+                className="bg-indigo-600 hover:bg-indigo-500 p-2 rounded-xl text-white transition-colors cursor-pointer"
                 title="Add to Watchlist"
               >
                 <Plus className="w-3.5 h-3.5" />

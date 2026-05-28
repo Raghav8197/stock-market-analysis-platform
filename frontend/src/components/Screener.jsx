@@ -34,6 +34,8 @@ const Screener = ({ onSelectStock }) => {
   const [searchSymbol, setSearchSymbol] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchAnalysis, setSearchAnalysis] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const runScreener = async () => {
     setLoading(true);
@@ -51,14 +53,11 @@ const Screener = ({ onSelectStock }) => {
     }
   };
 
-  const handleAnalyzeSearch = async (e) => {
-    e.preventDefault();
-    if (!searchSymbol) return;
+  const triggerAnalysis = async (symbolToAnalyze) => {
     setSearchLoading(true);
     setSearchAnalysis(null);
     try {
-      const sym = searchSymbol.trim().toUpperCase();
-      const response = await api.get(`/api/stocks/${sym}/analysis`);
+      const response = await api.get(`/api/stocks/${symbolToAnalyze}/analysis`);
       setSearchAnalysis(response.data);
     } catch (error) {
       console.error("Custom analysis failed:", error);
@@ -67,6 +66,31 @@ const Screener = ({ onSelectStock }) => {
       setSearchLoading(false);
     }
   };
+
+  const handleAnalyzeSearch = (e) => {
+    e.preventDefault();
+    if (!searchSymbol) return;
+    triggerAnalysis(searchSymbol.trim().toUpperCase());
+  };
+
+  // Fetch search suggestions as the user types
+  useEffect(() => {
+    if (!searchSymbol || searchSymbol.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    
+    const delayDebounce = setTimeout(async () => {
+      try {
+        const response = await api.get(`/api/stocks/search?q=${searchSymbol.trim()}`);
+        setSuggestions(response.data);
+      } catch (err) {
+        console.error("Failed to fetch suggestions:", err);
+      }
+    }, 300);
+    
+    return () => clearTimeout(delayDebounce);
+  }, [searchSymbol]);
 
   // Run screen on mount
   useEffect(() => {
@@ -103,14 +127,47 @@ const Screener = ({ onSelectStock }) => {
         </h3>
         <p className="text-xs text-gray-400 mb-4">Enter any symbol (e.g. RELIANCE, TCS, AAPL, TSLA, MSFT) to run technical indicators and fit the machine learning Random Forest classifier instantly.</p>
         
-        <form onSubmit={handleAnalyzeSearch} className="flex flex-col sm:flex-row gap-3">
-          <input
-            type="text"
-            placeholder="Enter symbol (e.g. MSFT, TCS)..."
-            value={searchSymbol}
-            onChange={(e) => setSearchSymbol(e.target.value)}
-            className="flex-1 bg-gray-950/80 border border-gray-800 text-sm text-white rounded-xl py-3 px-4 focus:outline-none focus:border-indigo-500 transition-colors uppercase"
-          />
+        <form onSubmit={handleAnalyzeSearch} className="flex flex-col sm:flex-row gap-3 relative">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              placeholder="Enter symbol or company name (e.g. adani power, ola, reliance)..."
+              value={searchSymbol}
+              onChange={(e) => {
+                setSearchSymbol(e.target.value);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => {
+                setTimeout(() => setShowSuggestions(false), 200);
+              }}
+              className="w-full bg-gray-950/80 border border-gray-800 text-sm text-white rounded-xl py-3 px-4 focus:outline-none focus:border-indigo-500 transition-colors uppercase"
+            />
+            
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 mt-2 bg-gray-950 border border-gray-800 rounded-xl max-h-60 overflow-y-auto z-50 shadow-2xl divide-y divide-gray-900">
+                {suggestions.map((s) => (
+                  <div
+                    key={s.symbol}
+                    onClick={() => {
+                      setSearchSymbol(s.symbol);
+                      setShowSuggestions(false);
+                      triggerAnalysis(s.symbol);
+                    }}
+                    className="p-3 hover:bg-indigo-600/25 cursor-pointer flex justify-between items-center transition-colors text-left"
+                  >
+                    <div>
+                      <span className="font-bold text-white text-xs block">{s.name}</span>
+                      <span className="text-[10px] text-gray-550">{s.symbol}</span>
+                    </div>
+                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-gray-900 border border-gray-800 font-bold uppercase text-gray-400">
+                      {s.exchange}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <button 
             type="submit"
             disabled={searchLoading}
