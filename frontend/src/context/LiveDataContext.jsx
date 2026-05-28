@@ -14,28 +14,56 @@ export const LiveDataProvider = ({ children }) => {
 
   const connect = () => {
     if (ws.current) {
+      // Nullify handlers of the old socket so closing it doesn't trigger reconnection loops
+      ws.current.onopen = null;
+      ws.current.onmessage = null;
+      ws.current.onclose = null;
+      ws.current.onerror = null;
       ws.current.close();
     }
 
-    const socketUrl = "ws://127.0.0.1:8000/ws/live";
-    console.log("Connecting to WebSocket:", socketUrl);
-    ws.current = new WebSocket(socketUrl);
+    // Determine the websocket URL dynamically
+    const getSocketUrl = () => {
+      if (import.meta.env.VITE_WS_URL) {
+        return import.meta.env.VITE_WS_URL;
+      }
+      const apiUrl = import.meta.env.VITE_API_URL;
+      if (apiUrl) {
+        try {
+          const url = new URL(apiUrl);
+          const protocol = url.protocol === "https:" ? "wss:" : "ws:";
+          return `${protocol}//${url.host}/ws/live`;
+        } catch (e) {
+          console.error("Invalid VITE_API_URL for WebSocket construction:", e);
+        }
+      }
+      const hostname = window.location.hostname;
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      return `${wsProtocol}//${hostname}:8000/ws/live`;
+    };
 
-    ws.current.onopen = () => {
+    const socketUrl = getSocketUrl();
+    console.log("Connecting to WebSocket:", socketUrl);
+    const socket = new WebSocket(socketUrl);
+    ws.current = socket;
+
+    socket.onopen = () => {
+      if (ws.current !== socket) return; // Only handle events from the active socket
       console.log("WebSocket connected.");
       setConnected(true);
       reconnectAttempts.current = 0;
       
       // Resend current subscription scope on connection open
       if (subscriptions.current.size > 0) {
-        ws.current.send(JSON.stringify({
+        socket.send(JSON.stringify({
           action: "set",
           symbols: Array.from(subscriptions.current)
         }));
       }
     };
 
-    ws.current.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (ws.current !== socket) return; // Only handle events from the active socket
       try {
         const message = JSON.parse(event.data);
         if (message.type === "prices") {
@@ -49,7 +77,8 @@ export const LiveDataProvider = ({ children }) => {
       }
     };
 
-    ws.current.onclose = () => {
+    socket.onclose = () => {
+      if (ws.current !== socket) return; // Only handle events from the active socket
       console.log("WebSocket disconnected.");
       setConnected(false);
       
@@ -62,9 +91,10 @@ export const LiveDataProvider = ({ children }) => {
       }, delay);
     };
 
-    ws.current.onerror = (error) => {
+    socket.onerror = (error) => {
+      if (ws.current !== socket) return; // Only handle events from the active socket
       console.error("WebSocket error:", error);
-      ws.current.close();
+      socket.close();
     };
   };
 

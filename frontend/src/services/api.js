@@ -1,8 +1,15 @@
 import axios from "axios";
 
-// In dev: uses http://127.0.0.1:8000 (local backend)
-// In production: uses the VITE_API_URL env variable set in Vercel dashboard
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+const getApiUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  // In development: dynamically point to the host machine's IP on port 8000
+  const hostname = typeof window !== "undefined" ? window.location.hostname : "127.0.0.1";
+  return `http://${hostname}:8000`;
+};
+
+const API_URL = getApiUrl();
 
 const api = axios.create({
   baseURL: API_URL,
