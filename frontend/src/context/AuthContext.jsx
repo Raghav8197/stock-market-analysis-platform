@@ -29,7 +29,6 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password) => {
-    setLoading(true);
     setError(null);
     try {
       const response = await api.post("/api/auth/login", { email, password });
@@ -39,17 +38,14 @@ export const AuthProvider = ({ children }) => {
       // Fetch user profile
       const userResponse = await api.get("/api/auth/me");
       setUser(userResponse.data);
-      setLoading(false);
       return true;
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to login. Please check credentials.");
-      setLoading(false);
       return false;
     }
   };
 
   const register = async (email, password) => {
-    setLoading(true);
     setError(null);
     try {
       await api.post("/api/auth/register", { email, password });
@@ -57,7 +53,6 @@ export const AuthProvider = ({ children }) => {
       return await login(email, password);
     } catch (err) {
       setError(err.response?.data?.detail || "Registration failed. Try again.");
-      setLoading(false);
       return false;
     }
   };
@@ -68,21 +63,17 @@ export const AuthProvider = ({ children }) => {
   };
 
   const forgotPassword = async (email) => {
-    setLoading(true);
     setError(null);
     try {
       const response = await api.post("/api/auth/forgot-password", { email });
-      setLoading(false);
       return response.data.detail || "Recovery email simulated successfully.";
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to request recovery. Try again.");
-      setLoading(false);
       return null;
     }
   };
 
   const loginWithGoogle = async (credentialToken) => {
-    setLoading(true);
     setError(null);
     try {
       const response = await api.post("/api/auth/google", { credential_token: credentialToken });
@@ -92,11 +83,9 @@ export const AuthProvider = ({ children }) => {
       // Fetch user profile
       const userResponse = await api.get("/api/auth/me");
       setUser(userResponse.data);
-      setLoading(false);
       return true;
     } catch (err) {
       setError(err.response?.data?.detail || "Google login failed.");
-      setLoading(false);
       return false;
     }
   };
