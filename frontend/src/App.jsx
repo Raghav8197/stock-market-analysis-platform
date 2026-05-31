@@ -6,7 +6,7 @@ import Screener from "./components/Screener";
 import MutualFunds from "./components/MutualFunds";
 import AISignals from "./components/AISignals";
 import Alerts from "./components/Alerts";
-import AuthModal from "./components/AuthModal";
+import LoginPage from "./components/LoginPage";
 import IntradayMovers from "./components/IntradayMovers";
 import {
   DashboardSkeleton,
@@ -14,6 +14,7 @@ import {
   AISignalsSkeleton,
 } from "./components/Skeleton";
 import api from "./services/api";
+import { useAuth } from "./context/AuthContext";
 import { Activity } from "lucide-react";
 
 // ── Backend wake-up splash shown while Render cold-starts ────────────────────
@@ -58,7 +59,7 @@ const WakeUpSplash = ({ dots }) => (
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [symbol, setSymbol] = useState("AAPL");
-  const [authOpen, setAuthOpen] = useState(false);
+  const { user, loading: authLoading } = useAuth();
 
   // Backend health state
   const [backendReady, setBackendReady] = useState(false);
@@ -109,7 +110,7 @@ function App() {
       case "dashboard":
         return isFirstLoad
           ? <DashboardSkeleton />
-          : <Dashboard onSelectStock={selectStockAndNavigate} onOpenAuth={() => setAuthOpen(true)} />;
+          : <Dashboard onSelectStock={selectStockAndNavigate} onOpenAuth={() => {}} />;
 
       case "charts":
         return (
@@ -143,8 +144,12 @@ function App() {
     }
   };
 
-  if (!backendReady) {
+  if (!backendReady || authLoading) {
     return <WakeUpSplash dots={dots} />;
+  }
+
+  if (!user) {
+    return <LoginPage />;
   }
 
   return (
@@ -154,19 +159,13 @@ function App() {
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenAuth={() => setAuthOpen(true)}
+        onOpenAuth={() => {}}
       />
 
       {/* Main Viewport panel — pb-20 on mobile leaves room for bottom nav */}
       <main className="flex-1 p-4 md:p-6 overflow-y-auto overflow-x-hidden flex flex-col pb-20 md:pb-6">
         {renderTabContent()}
       </main>
-
-      {/* Auth Modal overlay portal */}
-      <AuthModal
-        isOpen={authOpen}
-        onClose={() => setAuthOpen(false)}
-      />
 
     </div>
   );
