@@ -103,8 +103,31 @@ The Antigravity Team
         msg['From'] = settings.SMTP_FROM or settings.SMTP_USER
         msg['To'] = to_email
 
-        # Connect to SMTP
-        server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
+        # Custom SMTP subclass that forces IPv4 connections to prevent "Network is unreachable" errors
+        class SMTP_IPv4(smtplib.SMTP):
+            def _get_socket(self, host, port, timeout):
+                import socket
+                err = None
+                for res in socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM):
+                    af, socktype, proto, canonname, sa = res
+                    sock = None
+                    try:
+                        sock = socket.socket(af, socktype, proto)
+                        if timeout is not None:
+                            sock.settimeout(timeout)
+                        sock.connect(sa)
+                        return sock
+                    except socket.error as e:
+                        err = e
+                        if sock is not None:
+                            sock.close()
+                if err is not None:
+                    raise err
+                else:
+                    raise socket.error("getaddrinfo returns an empty list")
+
+        # Connect to SMTP forcing IPv4
+        server = SMTP_IPv4(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
         if settings.SMTP_TLS:
             server.starttls()
         # Clean up any potential copy-paste whitespace/spaces from email and App Password
