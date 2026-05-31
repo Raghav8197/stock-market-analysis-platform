@@ -57,6 +57,7 @@ app.include_router(alerts.router)
 app.include_router(funds.router)
 
 @app.get("/api/health")
+@app.head("/api/health")
 def health_check():
     return {
         "status": "healthy",
