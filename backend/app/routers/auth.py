@@ -167,11 +167,8 @@ def forgot_password(data: schemas.ForgotPasswordRequest, db: Session = Depends(g
         if "not configured" in message:
             return {"detail": "A verification OTP was generated (check console output in development)."}
         else:
-            # If there was an actual error trying to connect/send (such as bad password or network block), raise it!
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to send email: {message}"
-            )
+            # Return a warning message to the client, but still allow transitioning to the verification stage
+            return {"detail": f"OTP generated, but email delivery failed ({message}). Please check your server console logs for the code."}
 
 @router.post("/verify-otp")
 def verify_otp(data: schemas.VerifyOTPRequest):
