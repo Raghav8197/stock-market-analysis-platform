@@ -123,6 +123,9 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   const [showMACD, setShowMACD] = useState(true);
 
   // Fetch Chart Data
+  const [analysis, setAnalysis] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+
   const fetchChartData = async () => {
     setLoading(true);
     try {
@@ -136,8 +139,21 @@ const ChartContainer = ({ symbol, setSymbol }) => {
     }
   };
 
+  const fetchAnalysisData = async () => {
+    setAnalysisLoading(true);
+    try {
+      const response = await api.get(`/api/stocks/${symbol}/analysis`);
+      setAnalysis(response.data);
+    } catch (error) {
+      console.error("Failed to load analysis data:", error);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchChartData();
+    fetchAnalysisData();
   }, [symbol, timeframe]);
 
   // Sync Search Input to external symbol changes
@@ -645,9 +661,69 @@ const ChartContainer = ({ symbol, setSymbol }) => {
               )}
             </div>
 
-            {/* Right Column: Pattern Detection Feed */}
+            {/* Right Column: AI Signal & Pattern Detection Feed */}
             <div className="lg:col-span-1 bg-gray-950/40 p-4 border border-gray-900 rounded-2xl flex flex-col h-full max-h-[580px] overflow-hidden">
-              <h4 className="font-bold text-white text-sm border-b border-gray-850 pb-2 mb-3">
+              {/* AI Recommendation Summary */}
+              {analysisLoading ? (
+                <div className="flex flex-col items-center justify-center py-6 border-b border-gray-850 mb-3 shrink-0">
+                  <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
+                  <p className="text-[10px] text-gray-500 mt-2">Computing AI signals...</p>
+                </div>
+              ) : analysis ? (
+                <div className="bg-darkCard/50 border border-gray-850 p-4 rounded-xl space-y-3 mb-4 shrink-0">
+                  <div>
+                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block">AI Rating Signal</span>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className={`text-lg font-extrabold tracking-wide uppercase px-3 py-0.5 rounded-lg border shadow-sm ${
+                        analysis.signal === "BUY" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
+                        analysis.signal === "SELL" ? "bg-rose-500/10 text-rose-400 border-rose-500/30" :
+                        "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                      }`}>
+                        {analysis.signal}
+                      </span>
+                      <div>
+                        <span className="text-white font-bold font-mono text-xs block">{analysis.confidence}%</span>
+                        <span className="text-[9px] text-gray-400 uppercase tracking-wider block">Model Confidence</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Confidence Bar */}
+                  <div className="w-full bg-gray-900 rounded-full h-1 overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        analysis.signal === "BUY" ? "bg-emerald-500" :
+                        analysis.signal === "SELL" ? "bg-rose-500" :
+                        "bg-amber-500"
+                      }`}
+                      style={{ width: `${analysis.confidence}%` }}
+                    />
+                  </div>
+
+                  {/* Reasons list (scrollable if too long) */}
+                  <div className="space-y-1 max-h-20 overflow-y-auto pr-1">
+                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block">Key Analysis Insights</span>
+                    {analysis.reasons?.map((reason, idx) => (
+                      <div key={idx} className="flex items-start gap-1.5 text-[9px] text-gray-300 leading-tight">
+                        <span className="text-indigo-400">•</span>
+                        <span>{reason}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ML engine badge */}
+                  <div className="flex items-center justify-between border-t border-gray-900/60 pt-2 mt-1.5 text-[9px]">
+                    <span className="text-gray-500 uppercase font-bold tracking-wider">Predictive Mode</span>
+                    <span className={`px-2 py-0.5 rounded-full border ${
+                      analysis.ml_model_active ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/25" : "bg-gray-800 text-gray-400 border-gray-800"
+                    }`}>
+                      {analysis.ml_model_active ? "Machine Learning Active" : "Heuristic Rules"}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+
+              <h4 className="font-bold text-white text-sm border-b border-gray-850 pb-2 mb-3 shrink-0">
                 Detected Patterns ({data?.detected_patterns?.length || 0})
               </h4>
               <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
