@@ -105,6 +105,15 @@ def generate_ai_signal(
     if latest.get("Pattern_Head_Shoulders", False):
         tech_score -= 3.0
         reasons.append("Head and Shoulders pattern completed")
+    if latest.get("Pattern_Shooting_Star", False):
+        tech_score -= 1.5
+        reasons.append("Shooting Star pattern detected (Potential reversal)")
+    if latest.get("Pattern_Morning_Star", False):
+        tech_score += 2.0
+        reasons.append("Morning Star pattern detected (Bullish reversal)")
+    if latest.get("Pattern_Evening_Star", False):
+        tech_score -= 2.0
+        reasons.append("Evening Star pattern detected (Bearish reversal)")
  
     # Volume filter
     vol_sma = df["Volume"].rolling(20).mean().iloc[-1]

@@ -202,6 +202,12 @@ def screen_stocks(
                     pattern_col = "Pattern_Double_Bottom"
                 elif pattern_filter.lower() == "head_shoulders":
                     pattern_col = "Pattern_Head_Shoulders"
+                elif pattern_filter.lower() == "shooting_star":
+                    pattern_col = "Pattern_Shooting_Star"
+                elif pattern_filter.lower() == "morning_star":
+                    pattern_col = "Pattern_Morning_Star"
+                elif pattern_filter.lower() == "evening_star":
+                    pattern_col = "Pattern_Evening_Star"
                     
                 if not latest.get(pattern_col, False):
                     return None
@@ -225,7 +231,7 @@ def screen_stocks(
                 "volume": int(latest["Volume"]),
                 "rsi": round(rsi_val, 1) if not pd.isna(rsi_val) else 50.0,
                 "patterns_detected": [
-                    pat for pat in ["Doji", "Hammer", "Bullish_Engulfing", "Bearish_Engulfing", "Double_Top", "Double_Bottom", "Head_Shoulders"]
+                    pat for pat in ["Doji", "Hammer", "Bullish_Engulfing", "Bearish_Engulfing", "Double_Top", "Double_Bottom", "Head_Shoulders", "Shooting_Star", "Morning_Star", "Evening_Star"]
                     if latest.get(f"Pattern_{pat}", False)
                 ]
             }
@@ -293,7 +299,7 @@ def get_top_intraday_movers(
                 "volume_surge": round(vol_surge, 1),
                 "rsi": round(rsi_val, 1) if not pd.isna(rsi_val) else 50.0,
                 "patterns_detected": [
-                    pat for pat in ["Doji", "Hammer", "Bullish_Engulfing", "Bearish_Engulfing", "Double_Top", "Double_Bottom", "Head_Shoulders"]
+                    pat for pat in ["Doji", "Hammer", "Bullish_Engulfing", "Bearish_Engulfing", "Double_Top", "Double_Bottom", "Head_Shoulders", "Shooting_Star", "Morning_Star", "Evening_Star"]
                     if latest.get(f"Pattern_{pat}", False)
                 ]
             }

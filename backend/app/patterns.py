@@ -150,6 +150,78 @@ def detect_head_and_shoulders(df: pd.DataFrame, tolerance: float = 0.03) -> pd.S
                         
     return has_pattern
 
+def detect_shooting_star(df: pd.DataFrame) -> pd.Series:
+    """
+    Detect Shooting Star pattern.
+    - Small body at lower end.
+    - Upper shadow is at least 2x the body.
+    - Lower shadow is very small.
+    """
+    body = (df["Close"] - df["Open"]).abs()
+    candle_range = df["High"] - df["Low"]
+    upper_shadow = df["High"] - df[["Open", "Close"]].max(axis=1)
+    lower_shadow = df[["Open", "Close"]].min(axis=1) - df["Low"]
+    
+    is_shooting_star = (
+        (body > 0) &
+        (upper_shadow >= 2 * body) &
+        (lower_shadow <= candle_range * 0.15) &
+        (candle_range > 0)
+    )
+    return is_shooting_star
+
+def detect_morning_star(df: pd.DataFrame) -> pd.Series:
+    """
+    Detect Morning Star pattern.
+    Three-candle pattern:
+    - Candle 1: Bearish (Close < Open)
+    - Candle 2: Small body (Doji or Spinning Top) closing below midpoint of Candle 1
+    - Candle 3: Bullish (Close > Open) closing above midpoint of Candle 1
+    """
+    is_star = pd.Series(False, index=df.index)
+    for i in range(2, len(df)):
+        o1, c1 = df["Open"].iloc[i-2], df["Close"].iloc[i-2]
+        o2, c2 = df["Open"].iloc[i-1], df["Close"].iloc[i-1]
+        o3, c3 = df["Open"].iloc[i], df["Close"].iloc[i]
+        
+        body1 = abs(c1 - o1)
+        body2 = abs(c2 - o2)
+        body3 = abs(c3 - o3)
+        
+        if (c1 < o1) and (c3 > o3):
+            if body2 < body1 * 0.4 and body2 < body3 * 0.4:
+                midpoint1 = (o1 + c1) / 2
+                if max(o2, c2) < midpoint1:
+                    if c3 > midpoint1:
+                        is_star.iloc[i] = True
+    return is_star
+
+def detect_evening_star(df: pd.DataFrame) -> pd.Series:
+    """
+    Detect Evening Star pattern.
+    Three-candle pattern:
+    - Candle 1: Bullish (Close > Open)
+    - Candle 2: Small body (Doji or Spinning Top) closing above midpoint of Candle 1
+    - Candle 3: Bearish (Close < Open) closing below midpoint of Candle 1
+    """
+    is_star = pd.Series(False, index=df.index)
+    for i in range(2, len(df)):
+        o1, c1 = df["Open"].iloc[i-2], df["Close"].iloc[i-2]
+        o2, c2 = df["Open"].iloc[i-1], df["Close"].iloc[i-1]
+        o3, c3 = df["Open"].iloc[i], df["Close"].iloc[i]
+        
+        body1 = abs(c1 - o1)
+        body2 = abs(c2 - o2)
+        body3 = abs(c3 - o3)
+        
+        if (c1 > o1) and (c3 < o3):
+            if body2 < body1 * 0.4 and body2 < body3 * 0.4:
+                midpoint1 = (o1 + c1) / 2
+                if min(o2, c2) > midpoint1:
+                    if c3 < midpoint1:
+                        is_star.iloc[i] = True
+    return is_star
+
 def scan_patterns(df: pd.DataFrame) -> pd.DataFrame:
     """Scan and append all patterns as boolean columns in the dataframe."""
     df = df.copy()
@@ -166,5 +238,8 @@ def scan_patterns(df: pd.DataFrame) -> pd.DataFrame:
     df["Pattern_Double_Bottom"] = doubles["double_bottom"]
     
     df["Pattern_Head_Shoulders"] = detect_head_and_shoulders(df)
+    df["Pattern_Shooting_Star"] = detect_shooting_star(df)
+    df["Pattern_Morning_Star"] = detect_morning_star(df)
+    df["Pattern_Evening_Star"] = detect_evening_star(df)
     
     return df

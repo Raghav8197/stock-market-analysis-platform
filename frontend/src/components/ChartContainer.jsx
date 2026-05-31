@@ -668,6 +668,18 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                         <span className="text-gray-400">Trigger Price:</span>
                         <span className="text-white font-bold font-mono">{isIndianSymbol(symbol) ? "₹" : "$"}{p.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </div>
+                      {p.recommendation && (
+                        <div className="flex justify-between items-center pt-1.5 border-t border-gray-900/50 mt-1.5">
+                          <span className="text-[10px] text-gray-500 font-medium">Action Signal:</span>
+                          <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
+                            p.recommendation === "BUY" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                            p.recommendation === "SELL" ? "bg-rose-500/10 text-rose-400 border border-rose-500/20" :
+                            "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                          }`}>
+                            {p.recommendation}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   ))
                 ) : (
