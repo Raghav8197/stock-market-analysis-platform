@@ -3,28 +3,52 @@ import { useAuth } from "../context/AuthContext";
 import { Lock, Mail, Loader2, TrendingUp, Cpu, Activity, ArrowRight } from "lucide-react";
 
 const LoginPage = () => {
-  const { login, register, error, setError } = useAuth();
-  const [isRegister, setIsRegister] = useState(false);
+  const { login, register, error, setError, forgotPassword, loginWithGoogle } = useAuth();
+  const [authMode, setAuthMode] = useState("login"); // "login" | "register" | "forgot"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setSuccessMessage("");
     
     let success = false;
-    if (isRegister) {
+    if (authMode === "register") {
       success = await register(email, password);
-    } else {
+    } else if (authMode === "login") {
       success = await login(email, password);
+    } else if (authMode === "forgot") {
+      const detail = await forgotPassword(email);
+      if (detail) {
+        setSuccessMessage(detail);
+        success = true;
+      }
     }
     
     setLoading(false);
     if (success) {
-      setEmail("");
-      setPassword("");
+      if (authMode !== "forgot") {
+        setEmail("");
+        setPassword("");
+      }
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setError(null);
+    setSuccessMessage("");
+    const userEmail = prompt("Enter email to simulate Google Sign-in:", "googleuser@example.com");
+    if (!userEmail) return;
+    
+    setLoading(true);
+    const success = await loginWithGoogle("mock-google-token-" + userEmail.trim());
+    setLoading(false);
+    if (!success) {
+      // Error is handled in context
     }
   };
 
@@ -104,11 +128,13 @@ const LoginPage = () => {
             </div>
 
             <h2 className="text-2xl font-bold font-outfit text-white">
-              {isRegister ? "Get Started" : "Welcome Back"}
+              {authMode === "register" ? "Get Started" : authMode === "forgot" ? "Reset Password" : "Welcome Back"}
             </h2>
-            <p className="text-xs text-gray-400 mt-1.5">
-              {isRegister 
+            <p className="text-xs text-gray-400 mt-1.5 font-normal leading-relaxed">
+              {authMode === "register" 
                 ? "Register a new profile to access active analytical components." 
+                : authMode === "forgot"
+                ? "Provide your email address to receive password recovery instructions."
                 : "Authorize your session credentials to access the quantitative dashboards."}
             </p>
           </div>
@@ -117,6 +143,12 @@ const LoginPage = () => {
             {error && (
               <div className="p-3 text-xs bg-rose-950/40 border border-rose-500/20 text-rose-400 rounded-xl animate-in fade-in duration-200">
                 {error}
+              </div>
+            )}
+
+            {successMessage && (
+              <div className="p-3 text-xs bg-emerald-950/40 border border-emerald-500/20 text-emerald-400 rounded-xl animate-in fade-in duration-200">
+                {successMessage}
               </div>
             )}
 
@@ -135,20 +167,37 @@ const LoginPage = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-gray-950/60 border border-gray-800 rounded-xl py-3 pl-10 pr-4 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
-                />
+            {authMode !== "forgot" && (
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Password</label>
+                  {authMode === "login" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode("forgot");
+                        setError(null);
+                        setSuccessMessage("");
+                      }}
+                      className="text-[10.5px] text-indigo-450 hover:text-indigo-400 font-bold transition-colors cursor-pointer"
+                    >
+                      Forgot Password?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-gray-950/60 border border-gray-800 rounded-xl py-3 pl-10 pr-4 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             <button
               type="submit"
@@ -159,23 +208,62 @@ const LoginPage = () => {
                 <Loader2 className="w-4 h-4 animate-spin text-white" />
               ) : (
                 <>
-                  <span>{isRegister ? "Create Account" : "Sign In to Platform"}</span>
+                  <span>{authMode === "register" ? "Create Account" : authMode === "forgot" ? "Send Recovery Link" : "Sign In to Platform"}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
 
+            {authMode !== "forgot" && (
+              <>
+                <div className="flex items-center gap-3 my-4">
+                  <div className="h-[1px] bg-gray-850 flex-1" />
+                  <span className="text-[9px] text-gray-500 uppercase tracking-widest font-bold">Or</span>
+                  <div className="h-[1px] bg-gray-850 flex-1" />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-100 text-gray-850 text-xs font-bold py-3.5 rounded-xl transition-all duration-200 shadow-sm cursor-pointer"
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.47 14.99 1 12 1 7.35 1 3.39 3.65 1.44 7.5l3.82 2.96c.9-2.7 3.42-4.42 6.74-4.42z"/>
+                    <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.46c-.29 1.48-1.14 2.73-2.4 3.58l3.76 2.91c2.2-2.02 3.67-5.01 3.67-8.64z"/>
+                    <path fill="#FBBC05" d="M5.26 10.46a7.02 7.02 0 0 1 0 3.08l-3.82 2.96A11.96 11.96 0 0 1 1 12c0-1.63.32-3.19.91-4.6l3.82 2.96c-.3.49-.47 1.05-.47 1.64z"/>
+                    <path fill="#34A853" d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.76-2.91c-1.1.74-2.51 1.18-4.2 1.18-3.32 0-6.14-2.22-7.14-5.26l-3.82 2.96C3.39 20.35 7.35 23 12 23z"/>
+                  </svg>
+                  <span>Continue with Google</span>
+                </button>
+              </>
+            )}
+
             <div className="text-center pt-4 border-t border-gray-850 mt-6">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsRegister(!isRegister);
-                  setError(null);
-                }}
-                className="text-xs text-indigo-400 hover:text-indigo-300 font-bold transition-colors cursor-pointer"
-              >
-                {isRegister ? "Already have an account? Sign In" : "Don't have an account? Register Here"}
-              </button>
+              {authMode === "forgot" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("login");
+                    setError(null);
+                    setSuccessMessage("");
+                  }}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 font-bold transition-colors cursor-pointer"
+                >
+                  Back to Sign In
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode(authMode === "register" ? "login" : "register");
+                    setError(null);
+                    setSuccessMessage("");
+                  }}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 font-bold transition-colors cursor-pointer"
+                >
+                  {authMode === "register" ? "Already have an account? Sign In" : "Don't have an account? Register Here"}
+                </button>
+              )}
             </div>
           </form>
         </div>

@@ -67,8 +67,42 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const forgotPassword = async (email) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.post("/api/auth/forgot-password", { email });
+      setLoading(false);
+      return response.data.detail || "Recovery email simulated successfully.";
+    } catch (err) {
+      setError(err.response?.data?.detail || "Failed to request recovery. Try again.");
+      setLoading(false);
+      return null;
+    }
+  };
+
+  const loginWithGoogle = async (credentialToken) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.post("/api/auth/google", { credential_token: credentialToken });
+      const { access_token } = response.data;
+      localStorage.setItem("token", access_token);
+      
+      // Fetch user profile
+      const userResponse = await api.get("/api/auth/me");
+      setUser(userResponse.data);
+      setLoading(false);
+      return true;
+    } catch (err) {
+      setError(err.response?.data?.detail || "Google login failed.");
+      setLoading(false);
+      return false;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, register, logout, setError }}>
+    <AuthContext.Provider value={{ user, loading, error, login, register, logout, setError, forgotPassword, loginWithGoogle }}>
       {children}
     </AuthContext.Provider>
   );

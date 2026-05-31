@@ -27,6 +27,12 @@ class TokenData(BaseModel):
     email: Optional[str] = None
     user_id: Optional[int] = None
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class GoogleLoginRequest(BaseModel):
+    credential_token: str
+
 # Watchlist Schemas
 class WatchlistCreate(BaseModel):
     symbol: str

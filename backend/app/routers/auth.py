@@ -64,3 +64,51 @@ def login_user_form(form_data: OAuth2PasswordRequestForm = Depends(), db: Sessio
 @router.get("/me", response_model=schemas.UserResponse)
 def get_me(current_user: models.User = Depends(auth.get_current_user)):
     return current_user
+
+@router.post("/forgot-password")
+def forgot_password(data: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == data.email).first()
+    if user:
+        reset_token = f"mock-reset-token-{user.id}"
+        reset_link = f"http://localhost:5173/reset-password?token={reset_token}"
+        print("\n" + "="*50)
+        print(f"[RECOVERY DAEMON] Password reset requested for {user.email}")
+        print(f"[RECOVERY DAEMON] Reset link: {reset_link}")
+        print("="*50 + "\n")
+        return {"detail": "Password reset instructions have been printed to the server log."}
+    else:
+        return {"detail": "If this email is registered, password reset instructions have been printed to the log."}
+
+@router.post("/google", response_model=schemas.Token)
+def google_auth(data: schemas.GoogleLoginRequest, db: Session = Depends(get_db)):
+    email = None
+    if data.credential_token.startswith("mock-google-token-"):
+        email = data.credential_token.replace("mock-google-token-", "")
+    else:
+        if "@" in data.credential_token:
+            email = data.credential_token
+        else:
+            email = "googleuser@example.com"
+            
+    email = email.strip().lower()
+    
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        import uuid
+        random_password = str(uuid.uuid4())
+        hashed_password = auth.get_password_hash(random_password)
+        user = models.User(
+            email=email,
+            hashed_password=hashed_password
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        print(f"[OAuth] Automatically registered new Google user: {email}")
+    else:
+        print(f"[OAuth] Logged in existing Google user: {email}")
+        
+    access_token = auth.create_access_token(
+        data={"sub": user.email, "id": user.id}
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
