@@ -268,3 +268,5 @@ def google_auth(data: schemas.GoogleLoginRequest, db: Session = Depends(get_db))
         data={"sub": user.email, "id": user.id}
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+# Force reload for new env settings
