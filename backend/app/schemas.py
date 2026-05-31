@@ -33,6 +33,15 @@ class ForgotPasswordRequest(BaseModel):
 class GoogleLoginRequest(BaseModel):
     credential_token: str
 
+class VerifyOTPRequest(BaseModel):
+    email: EmailStr
+    otp: str
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp: str
+    new_password: str
+
 # Watchlist Schemas
 class WatchlistCreate(BaseModel):
     symbol: str

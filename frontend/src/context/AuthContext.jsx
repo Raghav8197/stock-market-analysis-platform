@@ -73,6 +73,28 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const verifyOtp = async (email, otp) => {
+    setError(null);
+    try {
+      const response = await api.post("/api/auth/verify-otp", { email, otp });
+      return response.data.detail || "OTP verified successfully.";
+    } catch (err) {
+      setError(err.response?.data?.detail || "Invalid or expired OTP code.");
+      return null;
+    }
+  };
+
+  const resetPassword = async (email, otp, newPassword) => {
+    setError(null);
+    try {
+      const response = await api.post("/api/auth/reset-password", { email, otp, new_password: newPassword });
+      return response.data.detail || "Password reset completed.";
+    } catch (err) {
+      setError(err.response?.data?.detail || "Failed to reset password. Try again.");
+      return null;
+    }
+  };
+
   const loginWithGoogle = async (credentialToken) => {
     setError(null);
     try {
@@ -91,7 +113,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, register, logout, setError, forgotPassword, loginWithGoogle }}>
+    <AuthContext.Provider value={{ user, loading, error, login, register, logout, setError, forgotPassword, loginWithGoogle, verifyOtp, resetPassword }}>
       {children}
     </AuthContext.Provider>
   );

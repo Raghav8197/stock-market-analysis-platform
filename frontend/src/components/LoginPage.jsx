@@ -1,14 +1,32 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { Lock, Mail, Loader2, TrendingUp, Cpu, Activity, ArrowRight } from "lucide-react";
+import { Lock, Mail, Loader2, TrendingUp, Cpu, Activity, ArrowRight, ShieldCheck } from "lucide-react";
 
 const LoginPage = () => {
-  const { login, register, error, setError, forgotPassword, loginWithGoogle } = useAuth();
+  const { login, register, error, setError, forgotPassword, loginWithGoogle, verifyOtp, resetPassword } = useAuth();
   const [authMode, setAuthMode] = useState("login"); // "login" | "register" | "forgot"
+  const [forgotStage, setForgotStage] = useState("request"); // "request" | "verify" | "reset"
+  
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+
+  const handleModeChange = (mode) => {
+    setAuthMode(mode);
+    setForgotStage("request");
+    setError(null);
+    setSuccessMessage("");
+    setEmail("");
+    setPassword("");
+    setOtp("");
+    setNewPassword("");
+    setConfirmPassword("");
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,20 +40,42 @@ const LoginPage = () => {
     } else if (authMode === "login") {
       success = await login(email, password);
     } else if (authMode === "forgot") {
-      const detail = await forgotPassword(email);
-      if (detail) {
-        setSuccessMessage(detail);
-        success = true;
+      if (forgotStage === "request") {
+        const detail = await forgotPassword(email);
+        if (detail) {
+          setSuccessMessage(detail);
+          setForgotStage("verify");
+          success = true;
+        }
+      } else if (forgotStage === "verify") {
+        const detail = await verifyOtp(email, otp);
+        if (detail) {
+          setSuccessMessage(detail);
+          setForgotStage("reset");
+          success = true;
+        }
+      } else if (forgotStage === "reset") {
+        if (newPassword !== confirmPassword) {
+          setError("Passwords do not match.");
+          setLoading(false);
+          return;
+        }
+        const detail = await resetPassword(email, otp, newPassword);
+        if (detail) {
+          setSuccessMessage("Password reset successfully. Please sign in.");
+          setAuthMode("login");
+          setForgotStage("request");
+          setEmail("");
+          setPassword("");
+          setOtp("");
+          setNewPassword("");
+          setConfirmPassword("");
+          success = true;
+        }
       }
     }
     
     setLoading(false);
-    if (success) {
-      if (authMode !== "forgot") {
-        setEmail("");
-        setPassword("");
-      }
-    }
   };
 
   const handleGoogleLogin = async () => {
@@ -128,13 +168,17 @@ const LoginPage = () => {
             </div>
 
             <h2 className="text-2xl font-bold font-outfit text-white">
-              {authMode === "register" ? "Get Started" : authMode === "forgot" ? "Reset Password" : "Welcome Back"}
+              {authMode === "register" ? "Get Started" : authMode === "forgot" ? (forgotStage === "verify" ? "Verify Code" : forgotStage === "reset" ? "Reset Password" : "Password Recovery") : "Welcome Back"}
             </h2>
             <p className="text-xs text-gray-400 mt-1.5 font-normal leading-relaxed">
               {authMode === "register" 
                 ? "Register a new profile to access active analytical components." 
                 : authMode === "forgot"
-                ? "Provide your email address to receive password recovery instructions."
+                ? (forgotStage === "verify" 
+                    ? "Check your backend console for the 6-digit OTP code and enter it below." 
+                    : forgotStage === "reset" 
+                    ? "Input your new secure password credentials." 
+                    : "Enter your registered email address to request a verification OTP code.")
                 : "Authorize your session credentials to access the quantitative dashboards."}
             </p>
           </div>
@@ -152,21 +196,45 @@ const LoginPage = () => {
               </div>
             )}
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Email Address</label>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full bg-gray-950/60 border border-gray-800 rounded-xl py-3 pl-10 pr-4 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
-                />
+            {/* Email Field - Shown in login, register, and request/verify forgot stages */}
+            {forgotStage !== "reset" && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Email Address</label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <input
+                    type="email"
+                    required
+                    readOnly={authMode === "forgot" && forgotStage === "verify"}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className={`w-full bg-gray-950/60 border border-gray-800 rounded-xl py-3 pl-10 pr-4 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors ${authMode === "forgot" && forgotStage === "verify" ? "opacity-60 cursor-not-allowed" : ""}`}
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
+            {/* OTP Field - Shown only during recovery verify stage */}
+            {authMode === "forgot" && forgotStage === "verify" && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Verification Code (OTP)</label>
+                <div className="relative">
+                  <ShieldCheck className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                    placeholder="Enter 6-digit OTP"
+                    className="w-full bg-gray-950/60 border border-gray-800 rounded-xl py-3 pl-10 pr-4 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors font-bold font-mono tracking-widest"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Password Field - Shown in login and register modes */}
             {authMode !== "forgot" && (
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
@@ -174,11 +242,7 @@ const LoginPage = () => {
                   {authMode === "login" && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setAuthMode("forgot");
-                        setError(null);
-                        setSuccessMessage("");
-                      }}
+                      onClick={() => handleModeChange("forgot")}
                       className="text-[10.5px] text-indigo-450 hover:text-indigo-400 font-bold transition-colors cursor-pointer"
                     >
                       Forgot Password?
@@ -199,6 +263,41 @@ const LoginPage = () => {
               </div>
             )}
 
+            {/* New Password & Confirm New Password Fields - Shown in recovery reset stage */}
+            {authMode === "forgot" && forgotStage === "reset" && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">New Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <input
+                      type="password"
+                      required
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-gray-950/60 border border-gray-800 rounded-xl py-3 pl-10 pr-4 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Confirm Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <input
+                      type="password"
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-gray-950/60 border border-gray-800 rounded-xl py-3 pl-10 pr-4 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={loading}
@@ -208,7 +307,13 @@ const LoginPage = () => {
                 <Loader2 className="w-4 h-4 animate-spin text-white" />
               ) : (
                 <>
-                  <span>{authMode === "register" ? "Create Account" : authMode === "forgot" ? "Send Recovery Link" : "Sign In to Platform"}</span>
+                  <span>
+                    {authMode === "register" 
+                      ? "Create Account" 
+                      : authMode === "forgot" 
+                      ? (forgotStage === "verify" ? "Verify Code" : forgotStage === "reset" ? "Reset Password" : "Send OTP Code") 
+                      : "Sign In to Platform"}
+                  </span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -239,31 +344,13 @@ const LoginPage = () => {
             )}
 
             <div className="text-center pt-4 border-t border-gray-850 mt-6">
-              {authMode === "forgot" ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode("login");
-                    setError(null);
-                    setSuccessMessage("");
-                  }}
-                  className="text-xs text-indigo-400 hover:text-indigo-300 font-bold transition-colors cursor-pointer"
-                >
-                  Back to Sign In
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode(authMode === "register" ? "login" : "register");
-                    setError(null);
-                    setSuccessMessage("");
-                  }}
-                  className="text-xs text-indigo-400 hover:text-indigo-300 font-bold transition-colors cursor-pointer"
-                >
-                  {authMode === "register" ? "Already have an account? Sign In" : "Don't have an account? Register Here"}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => handleModeChange(authMode === "register" ? "login" : "register")}
+                className="text-xs text-indigo-400 hover:text-indigo-300 font-bold transition-colors cursor-pointer"
+              >
+                {authMode === "forgot" ? "Back to Sign In" : (authMode === "register" ? "Already have an account? Sign In" : "Don't have an account? Register Here")}
+              </button>
             </div>
           </form>
         </div>

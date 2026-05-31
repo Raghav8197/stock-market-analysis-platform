@@ -65,19 +65,66 @@ def login_user_form(form_data: OAuth2PasswordRequestForm = Depends(), db: Sessio
 def get_me(current_user: models.User = Depends(auth.get_current_user)):
     return current_user
 
+# In-memory store for OTP codes
+RESET_OTP_DB = {}
+
 @router.post("/forgot-password")
 def forgot_password(data: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == data.email).first()
-    if user:
-        reset_token = f"mock-reset-token-{user.id}"
-        reset_link = f"http://localhost:5173/reset-password?token={reset_token}"
-        print("\n" + "="*50)
-        print(f"[RECOVERY DAEMON] Password reset requested for {user.email}")
-        print(f"[RECOVERY DAEMON] Reset link: {reset_link}")
-        print("="*50 + "\n")
-        return {"detail": "Password reset instructions have been printed to the server log."}
-    else:
-        return {"detail": "If this email is registered, password reset instructions have been printed to the log."}
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No user registered with this email address."
+        )
+        
+    import random
+    otp = f"{random.randint(100000, 999999)}"
+    RESET_OTP_DB[data.email.lower()] = otp
+    
+    print("\n" + "="*50)
+    print(f"[RECOVERY DAEMON] OTP code generated for {data.email}: {otp}")
+    print("="*50 + "\n")
+    
+    return {"detail": "A verification OTP has been printed to the server console."}
+
+@router.post("/verify-otp")
+def verify_otp(data: schemas.VerifyOTPRequest):
+    email = data.email.lower()
+    stored_otp = RESET_OTP_DB.get(email)
+    
+    if not stored_otp or stored_otp != data.otp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OTP code."
+        )
+        
+    return {"detail": "OTP verified successfully. You may now reset your password."}
+
+@router.post("/reset-password")
+def reset_password(data: schemas.ResetPasswordRequest, db: Session = Depends(get_db)):
+    email = data.email.lower()
+    stored_otp = RESET_OTP_DB.get(email)
+    
+    if not stored_otp or stored_otp != data.otp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OTP verification."
+        )
+        
+    user = db.query(models.User).filter(models.User.email == data.email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found."
+        )
+        
+    user.hashed_password = auth.get_password_hash(data.new_password)
+    db.commit()
+    
+    del RESET_OTP_DB[email]
+    
+    print(f"[RECOVERY DAEMON] Password successfully updated for {data.email}")
+    return {"detail": "Password has been reset successfully. Please log in with your new credentials."}
 
 @router.post("/google", response_model=schemas.Token)
 def google_auth(data: schemas.GoogleLoginRequest, db: Session = Depends(get_db)):
