@@ -107,7 +107,10 @@ The Antigravity Team
         server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
         if settings.SMTP_TLS:
             server.starttls()
-        server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+        # Clean up any potential copy-paste whitespace/spaces from email and App Password
+        smtp_user = settings.SMTP_USER.strip() if settings.SMTP_USER else ""
+        smtp_password = settings.SMTP_PASSWORD.replace(" ", "") if settings.SMTP_PASSWORD else ""
+        server.login(smtp_user, smtp_password)
         server.sendmail(msg['From'], [to_email], msg.as_string())
         server.quit()
         print(f"[RECOVERY DAEMON] Real OTP email successfully sent to {to_email}")
