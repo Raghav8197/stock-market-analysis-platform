@@ -1,6 +1,6 @@
 import os
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 class Settings(BaseSettings):
     # App Settings
@@ -36,7 +36,16 @@ class Settings(BaseSettings):
             origins.extend([u.strip() for u in extra.split(",") if u.strip()])
         return origins
 
+    # SMTP Email Settings
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM: Optional[str] = None
+    SMTP_TLS: bool = True
+
     class Config:
         case_sensitive = True
+        env_file = ".env"
 
 settings = Settings()

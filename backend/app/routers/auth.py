@@ -68,6 +68,56 @@ def get_me(current_user: models.User = Depends(auth.get_current_user)):
 # In-memory store for OTP codes
 RESET_OTP_DB = {}
 
+def send_otp_email(to_email: str, otp: str):
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.header import Header
+    from app.config import settings
+
+    subject = "Antigravity Market IQ - Password Recovery OTP"
+    body = f"""Hello,
+
+You have requested a password reset for your Antigravity Market IQ account.
+
+Your 6-digit verification code (OTP) is:
+{otp}
+
+This code is valid for 15 minutes. If you did not request this, please ignore this email.
+
+Best regards,
+The Antigravity Team
+"""
+    
+    # Check if SMTP is configured
+    if not settings.SMTP_HOST or not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+        print("\n" + "="*50)
+        print("[WARNING] SMTP is not fully configured. Email could not be sent.")
+        print(f"[RECOVERY DAEMON] OTP code for {to_email}: {otp}")
+        print("Please configure SMTP_HOST, SMTP_USER, and SMTP_PASSWORD in your environment to send real emails.")
+        print("="*50 + "\n")
+        return False
+
+    try:
+        msg = MIMEText(body, 'plain', 'utf-8')
+        msg['Subject'] = Header(subject, 'utf-8')
+        msg['From'] = settings.SMTP_FROM or settings.SMTP_USER
+        msg['To'] = to_email
+
+        # Connect to SMTP
+        server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
+        if settings.SMTP_TLS:
+            server.starttls()
+        server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+        server.sendmail(msg['From'], [to_email], msg.as_string())
+        server.quit()
+        print(f"[RECOVERY DAEMON] Real OTP email successfully sent to {to_email}")
+        return True
+    except Exception as e:
+        print(f"[RECOVERY DAEMON] Error sending OTP email to {to_email}: {str(e)}")
+        # Print fallback to console so the app doesn't break in dev if SMTP fails
+        print(f"[FALLBACK LOG] OTP code for {to_email}: {otp}")
+        return False
+
 @router.post("/forgot-password")
 def forgot_password(data: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == data.email).first()
@@ -81,11 +131,12 @@ def forgot_password(data: schemas.ForgotPasswordRequest, db: Session = Depends(g
     otp = f"{random.randint(100000, 999999)}"
     RESET_OTP_DB[data.email.lower()] = otp
     
-    print("\n" + "="*50)
-    print(f"[RECOVERY DAEMON] OTP code generated for {data.email}: {otp}")
-    print("="*50 + "\n")
+    email_sent = send_otp_email(data.email, otp)
     
-    return {"detail": "A verification OTP has been printed to the server console."}
+    if email_sent:
+        return {"detail": "A verification OTP has been sent to your email address."}
+    else:
+        return {"detail": "A verification OTP was generated (check console output in development)."}
 
 @router.post("/verify-otp")
 def verify_otp(data: schemas.VerifyOTPRequest):
