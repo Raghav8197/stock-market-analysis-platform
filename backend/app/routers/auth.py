@@ -73,6 +73,8 @@ def send_otp_email(to_email: str, otp: str):
     from email.mime.text import MIMEText
     from email.header import Header
     from app.config import settings
+    import urllib.request
+    import json
 
     subject = "Antigravity Market IQ - Password Recovery OTP"
     body = f"""Hello,
@@ -88,6 +90,30 @@ Best regards,
 The Antigravity Team
 """
     
+    # 1. Try sending via HTTP Email Relay URL (if configured, to bypass Render's SMTP blocks)
+    if settings.EMAIL_RELAY_URL:
+        try:
+            req_data = {
+                "to": to_email,
+                "subject": subject,
+                "body": body
+            }
+            req = urllib.request.Request(
+                settings.EMAIL_RELAY_URL,
+                data=json.dumps(req_data).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            # Fetch response (urllib follows redirects automatically)
+            with urllib.request.urlopen(req, timeout=10) as response:
+                res_content = response.read().decode()
+                print(f"[RECOVERY DAEMON] Email relay HTTP status: {response.status}")
+                print(f"[RECOVERY DAEMON] Real OTP email successfully sent via HTTP Relay to {to_email}")
+                return True, "Success"
+        except Exception as e:
+            print(f"[RECOVERY DAEMON] HTTP Email Relay failed: {e}. Falling back to standard SMTP.")
+            
+    # 2. Standard SMTP connection
     # Check if SMTP is configured
     if not settings.SMTP_HOST or not settings.SMTP_USER or not settings.SMTP_PASSWORD:
         print("\n" + "="*50)

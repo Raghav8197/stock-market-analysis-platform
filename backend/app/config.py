@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     SMTP_FROM: Optional[str] = None
     SMTP_TLS: bool = True
     GOOGLE_CLIENT_ID: Optional[str] = None
+    EMAIL_RELAY_URL: Optional[str] = None
 
     class Config:
         case_sensitive = True
