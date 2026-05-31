@@ -95,7 +95,7 @@ The Antigravity Team
         print(f"[RECOVERY DAEMON] OTP code for {to_email}: {otp}")
         print("Please configure SMTP_HOST, SMTP_USER, and SMTP_PASSWORD in your environment to send real emails.")
         print("="*50 + "\n")
-        return False
+        return False, "SMTP settings are not configured"
 
     try:
         msg = MIMEText(body, 'plain', 'utf-8')
@@ -114,12 +114,13 @@ The Antigravity Team
         server.sendmail(msg['From'], [to_email], msg.as_string())
         server.quit()
         print(f"[RECOVERY DAEMON] Real OTP email successfully sent to {to_email}")
-        return True
+        return True, "Success"
     except Exception as e:
-        print(f"[RECOVERY DAEMON] Error sending OTP email to {to_email}: {str(e)}")
+        err_msg = str(e)
+        print(f"[RECOVERY DAEMON] Error sending OTP email to {to_email}: {err_msg}")
         # Print fallback to console so the app doesn't break in dev if SMTP fails
         print(f"[FALLBACK LOG] OTP code for {to_email}: {otp}")
-        return False
+        return False, err_msg
 
 @router.post("/forgot-password")
 def forgot_password(data: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
@@ -134,12 +135,20 @@ def forgot_password(data: schemas.ForgotPasswordRequest, db: Session = Depends(g
     otp = f"{random.randint(100000, 999999)}"
     RESET_OTP_DB[data.email.lower()] = otp
     
-    email_sent = send_otp_email(data.email, otp)
+    email_sent, message = send_otp_email(data.email, otp)
     
     if email_sent:
         return {"detail": "A verification OTP has been sent to your email address."}
     else:
-        return {"detail": "A verification OTP was generated (check console output in development)."}
+        # If it failed because SMTP settings are completely missing from config, return local fallback message
+        if "not configured" in message:
+            return {"detail": "A verification OTP was generated (check console output in development)."}
+        else:
+            # If there was an actual error trying to connect/send (such as bad password or network block), raise it!
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to send email: {message}"
+            )
 
 @router.post("/verify-otp")
 def verify_otp(data: schemas.VerifyOTPRequest):
