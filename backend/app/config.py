@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     SMTP_FROM: Optional[str] = None
     SMTP_TLS: bool = True
+    GOOGLE_CLIENT_ID: Optional[str] = None
 
     class Config:
         case_sensitive = True

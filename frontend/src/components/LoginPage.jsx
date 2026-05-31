@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Lock, Mail, Loader2, TrendingUp, Cpu, Activity, ArrowRight, ShieldCheck } from "lucide-react";
 
@@ -78,19 +78,39 @@ const LoginPage = () => {
     setLoading(false);
   };
 
-  const handleGoogleLogin = async () => {
-    setError(null);
-    setSuccessMessage("");
-    const userEmail = prompt("Enter email to simulate Google Sign-in:", "googleuser@example.com");
-    if (!userEmail) return;
-    
-    setLoading(true);
-    const success = await loginWithGoogle("mock-google-token-" + userEmail.trim());
-    setLoading(false);
-    if (!success) {
-      // Error is handled in context
+  useEffect(() => {
+    /* global google */
+    if (window.google && (authMode === "login" || authMode === "register")) {
+      try {
+        window.google.accounts.id.initialize({
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
+          callback: async (response) => {
+            setLoading(true);
+            setError(null);
+            setSuccessMessage("");
+            const success = await loginWithGoogle(response.credential);
+            setLoading(false);
+            if (!success) {
+              // Error will be displayed via state in AuthContext
+            }
+          },
+        });
+        
+        window.google.accounts.id.renderButton(
+          document.getElementById("google-signin-btn"),
+          { 
+            theme: "filled_blue", 
+            size: "large", 
+            width: "320", 
+            text: "signin_with",
+            shape: "pill" 
+          }
+        );
+      } catch (err) {
+        console.error("Failed to initialize Google Sign-In:", err);
+      }
     }
-  };
+  }, [authMode, loginWithGoogle]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0F19] overflow-hidden">
@@ -327,19 +347,12 @@ const LoginPage = () => {
                   <div className="h-[1px] bg-gray-850 flex-1" />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-100 text-gray-850 text-xs font-bold py-3.5 rounded-xl transition-all duration-200 shadow-sm cursor-pointer"
-                >
-                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                    <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.47 14.99 1 12 1 7.35 1 3.39 3.65 1.44 7.5l3.82 2.96c.9-2.7 3.42-4.42 6.74-4.42z"/>
-                    <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.46c-.29 1.48-1.14 2.73-2.4 3.58l3.76 2.91c2.2-2.02 3.67-5.01 3.67-8.64z"/>
-                    <path fill="#FBBC05" d="M5.26 10.46a7.02 7.02 0 0 1 0 3.08l-3.82 2.96A11.96 11.96 0 0 1 1 12c0-1.63.32-3.19.91-4.6l3.82 2.96c-.3.49-.47 1.05-.47 1.64z"/>
-                    <path fill="#34A853" d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.76-2.91c-1.1.74-2.51 1.18-4.2 1.18-3.32 0-6.14-2.22-7.14-5.26l-3.82 2.96C3.39 20.35 7.35 23 12 23z"/>
-                  </svg>
-                  <span>Continue with Google</span>
-                </button>
+                <div className="flex justify-center w-full">
+                  <div 
+                    id="google-signin-btn" 
+                    className="w-full max-w-[320px]"
+                  />
+                </div>
               </>
             )}
 

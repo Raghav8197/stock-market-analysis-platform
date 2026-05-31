@@ -180,17 +180,72 @@ def reset_password(data: schemas.ResetPasswordRequest, db: Session = Depends(get
     print(f"[RECOVERY DAEMON] Password successfully updated for {data.email}")
     return {"detail": "Password has been reset successfully. Please log in with your new credentials."}
 
+def verify_google_id_token(token: str) -> dict:
+    """Verifies the Google ID token and returns the user info payload."""
+    import urllib.request
+    import json
+    from jose import jwt
+    from app.config import settings
+
+    try:
+        # Fetch Google's public JWK certificates
+        with urllib.request.urlopen("https://www.googleapis.com/oauth2/v3/certs", timeout=5) as response:
+            jwks = json.loads(response.read().decode())
+            
+        # Get unverified header to match kid
+        unverified_header = jwt.get_unverified_header(token)
+        kid = unverified_header.get("kid")
+        
+        public_key = None
+        for key in jwks.get("keys", []):
+            if key.get("kid") == kid:
+                public_key = key
+                break
+                
+        if not public_key:
+            print(f"[OAuth] No public key found matching kid: {kid}")
+            return None
+            
+        # Validate audience only if GOOGLE_CLIENT_ID is configured in settings
+        if settings.GOOGLE_CLIENT_ID:
+            payload = jwt.decode(
+                token,
+                public_key,
+                algorithms=["RS256"],
+                audience=settings.GOOGLE_CLIENT_ID,
+                issuer="https://accounts.google.com"
+            )
+        else:
+            print("[WARNING] GOOGLE_CLIENT_ID is not set in settings. Audience validation disabled.")
+            payload = jwt.decode(
+                token,
+                public_key,
+                algorithms=["RS256"],
+                options={"verify_aud": False},
+                issuer="https://accounts.google.com"
+            )
+        return payload
+    except Exception as e:
+        print(f"[OAuth] Google token verification failed: {e}")
+        return None
+
 @router.post("/google", response_model=schemas.Token)
 def google_auth(data: schemas.GoogleLoginRequest, db: Session = Depends(get_db)):
-    email = None
-    if data.credential_token.startswith("mock-google-token-"):
-        email = data.credential_token.replace("mock-google-token-", "")
-    else:
-        if "@" in data.credential_token:
-            email = data.credential_token
-        else:
-            email = "googleuser@example.com"
-            
+    # Verify the real Google ID Token
+    payload = verify_google_id_token(data.credential_token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired Google authentication credentials."
+        )
+        
+    email = payload.get("email")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email address not provided in Google profile."
+        )
+        
     email = email.strip().lower()
     
     user = db.query(models.User).filter(models.User.email == email).first()
