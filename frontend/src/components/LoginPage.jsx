@@ -78,39 +78,7 @@ const LoginPage = () => {
     setLoading(false);
   };
 
-  useEffect(() => {
-    /* global google */
-    if (window.google && (authMode === "login" || authMode === "register")) {
-      try {
-        window.google.accounts.id.initialize({
-          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
-          callback: async (response) => {
-            setLoading(true);
-            setError(null);
-            setSuccessMessage("");
-            const success = await loginWithGoogle(response.credential);
-            setLoading(false);
-            if (!success) {
-              // Error will be displayed via state in AuthContext
-            }
-          },
-        });
-        
-        window.google.accounts.id.renderButton(
-          document.getElementById("google-signin-btn"),
-          { 
-            theme: "filled_blue", 
-            size: "large", 
-            width: "320", 
-            text: "signin_with",
-            shape: "pill" 
-          }
-        );
-      } catch (err) {
-        console.error("Failed to initialize Google Sign-In:", err);
-      }
-    }
-  }, [authMode, loginWithGoogle]);
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B0F19] overflow-hidden">
@@ -339,22 +307,7 @@ const LoginPage = () => {
               )}
             </button>
 
-            {authMode !== "forgot" && (
-              <>
-                <div className="flex items-center gap-3 my-4">
-                  <div className="h-[1px] bg-gray-850 flex-1" />
-                  <span className="text-[9px] text-gray-500 uppercase tracking-widest font-bold">Or</span>
-                  <div className="h-[1px] bg-gray-850 flex-1" />
-                </div>
 
-                <div className="flex justify-center w-full">
-                  <div 
-                    id="google-signin-btn" 
-                    className="w-full max-w-[320px]"
-                  />
-                </div>
-              </>
-            )}
 
             <div className="text-center pt-4 border-t border-gray-850 mt-6">
               <button
