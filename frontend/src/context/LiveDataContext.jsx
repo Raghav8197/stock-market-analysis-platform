@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect, useContext, useRef } from "react";
+import api from "../services/api";
 
 const LiveDataContext = createContext(null);
 
@@ -110,17 +111,73 @@ export const LiveDataProvider = ({ children }) => {
     };
   }, []);
 
+  // Polling fallback when WebSocket is offline or on serverless hosting (Vercel)
+  useEffect(() => {
+    if (connected) return;
+
+    const pollFallback = async () => {
+      if (subscriptions.current.size === 0) return;
+      const symbolsToPoll = Array.from(subscriptions.current).slice(0, 15);
+      
+      try {
+        const results = await Promise.allSettled(
+          symbolsToPoll.map(sym => api.get(`/api/stocks/${encodeURIComponent(sym)}/quote`))
+        );
+        const newPrices = {};
+        results.forEach(res => {
+          if (res.status === "fulfilled" && res.value?.data) {
+            const d = res.value.data;
+            newPrices[d.symbol] = {
+              price: d.price,
+              timestamp: new Date().toLocaleTimeString(),
+              status: d.status
+            };
+            if (d.resolved_ticker && d.resolved_ticker !== d.symbol) {
+              newPrices[d.resolved_ticker] = newPrices[d.symbol];
+            }
+          }
+        });
+        if (Object.keys(newPrices).length > 0) {
+          setPrices(prev => ({ ...prev, ...newPrices }));
+        }
+      } catch (err) {
+        // silent fallback
+      }
+    };
+
+    pollFallback();
+    const interval = setInterval(pollFallback, 2500);
+    return () => clearInterval(interval);
+  }, [connected]);
+
   const subscribeSymbols = (symbols) => {
     const list = Array.isArray(symbols) ? symbols : [symbols];
     const upperList = list.map(s => s.toUpperCase());
     
     upperList.forEach(s => subscriptions.current.add(s));
     
-    if (connected && ws.current) {
+    if (connected && ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({
         action: "subscribe",
         symbols: upperList
       }));
+    } else {
+      // Immediate one-off quote fetch for fast response
+      upperList.forEach(async (sym) => {
+        try {
+          const res = await api.get(`/api/stocks/${encodeURIComponent(sym)}/quote`);
+          if (res.data) {
+            setPrices(prev => ({
+              ...prev,
+              [res.data.symbol]: {
+                price: res.data.price,
+                timestamp: new Date().toLocaleTimeString(),
+                status: res.data.status
+              }
+            }));
+          }
+        } catch (e) {}
+      });
     }
   };
 

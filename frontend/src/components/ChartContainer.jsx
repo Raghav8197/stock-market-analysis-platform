@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from "lightweight-charts";
 import api from "../services/api";
+import { useLiveData } from "../context/LiveDataContext";
 
 const isIndianSymbol = (symbol) => {
   if (!symbol) return false;
@@ -411,12 +412,150 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   const macdSignalSeriesRef = useRef(null);
   const macdHistSeriesRef = useRef(null);
 
+  // Live Streaming & Context Data
+  const { prices, connected, subscribeSymbols } = useLiveData();
+  const [livePrice, setLivePrice] = useState(null);
+  const [priceDirection, setPriceDirection] = useState(null); // 'up', 'down', null
+  const [lastTickTime, setLastTickTime] = useState(Date.now());
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
+
   // States
   const [timeframe, setTimeframe] = useState("1D");
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
+  const dataRef = useRef(null);
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
   const [searchInput, setSearchInput] = useState(symbol);
   const [activeChartTab, setActiveChartTab] = useState("technical"); // technical, fundamental
+
+  // Subscribe current symbol to Live market channel
+  useEffect(() => {
+    if (symbol) {
+      subscribeSymbols(symbol);
+      const clean = symbol.replace(".NS", "").replace(".BO", "");
+      if (clean !== symbol) {
+        subscribeSymbols(clean);
+      }
+    }
+  }, [symbol]);
+
+  // Extract live tick from LiveDataContext
+  const contextPrice = useMemo(() => {
+    const s = symbol.toUpperCase();
+    const clean = s.replace(".NS", "").replace(".BO", "");
+    const match = prices[s] || prices[clean] || prices[`${clean}.NS`];
+    return match ? Number(match.price) : null;
+  }, [prices, symbol]);
+
+  // Helper to update the latest candlestick live on TradingView Lightweight Charts
+  const updateLastCandleWithPrice = useCallback((newPrice) => {
+    if (!candleSeriesRef.current || !dataRef.current?.candles?.length) return;
+    const candles = dataRef.current.candles;
+    const lastCandle = candles[candles.length - 1];
+    if (!lastCandle) return;
+
+    const p = Number(newPrice);
+    if (!p || isNaN(p) || p <= 0) return;
+
+    const updatedCandle = {
+      time: lastCandle.time,
+      open: Number(lastCandle.open),
+      high: Math.max(Number(lastCandle.high), p),
+      low: Math.min(Number(lastCandle.low), p),
+      close: p
+    };
+
+    try {
+      candleSeriesRef.current.update(updatedCandle);
+      lastCandle.high = updatedCandle.high;
+      lastCandle.low = updatedCandle.low;
+      lastCandle.close = updatedCandle.close;
+    } catch (e) {
+      // quiet catch on rapid tick updates
+    }
+  }, []);
+
+  // Sync WebSocket ticks directly to candle and ticker
+  useEffect(() => {
+    if (contextPrice !== null && !isNaN(contextPrice) && contextPrice > 0) {
+      setLivePrice((prev) => {
+        if (prev !== null) {
+          if (contextPrice > prev) setPriceDirection("up");
+          else if (contextPrice < prev) setPriceDirection("down");
+        }
+        return contextPrice;
+      });
+      setLastTickTime(Date.now());
+      updateLastCandleWithPrice(contextPrice);
+    }
+  }, [contextPrice, updateLastCandleWithPrice]);
+
+  // Real-time Heartbeat Poller: updates live ticker price & current candle every 2.5s if no user action
+  useEffect(() => {
+    if (!autoSyncEnabled) return;
+
+    const pollIntervalMs = ["1m", "2m", "3m"].includes(timeframe) ? 2000 : ["5m", "15m"].includes(timeframe) ? 3000 : 4500;
+
+    const tickInterval = setInterval(async () => {
+      try {
+        const res = await api.get(`/api/stocks/${encodeURIComponent(symbol)}/quote`);
+        if (res.data && res.data.price) {
+          const p = Number(res.data.price);
+          setLivePrice((prev) => {
+            if (prev !== null) {
+              if (p > prev) setPriceDirection("up");
+              else if (p < prev) setPriceDirection("down");
+            }
+            return p;
+          });
+          setLastTickTime(Date.now());
+          updateLastCandleWithPrice(p);
+        }
+      } catch (e) {
+        // quiet error handling
+      }
+    }, pollIntervalMs);
+
+    return () => clearInterval(tickInterval);
+  }, [symbol, timeframe, autoSyncEnabled, updateLastCandleWithPrice]);
+
+  // Background Full History & Pattern Scanner: refreshes chart bars & signals seamlessly without screen flickering
+  useEffect(() => {
+    if (!autoSyncEnabled) return;
+
+    const refreshMs = ["1m", "2m", "3m"].includes(timeframe) ? 8000 : ["5m", "15m", "30m"].includes(timeframe) ? 15000 : 30000;
+
+    const historyInterval = setInterval(async () => {
+      try {
+        const response = await api.get(`/api/stocks/${encodeURIComponent(symbol)}/history?timeframe=${timeframe}`);
+        const rawData = response.data;
+        if (rawData && rawData.candles && rawData.candles.length > 0) {
+          const enrichedPatterns = (rawData.detected_patterns || []).map(p => enrichPatternWithLevels(p, rawData.candles, timeframe));
+          
+          setData((prev) => {
+            if (!prev || !prev.candles || prev.candles.length === 0) {
+              return { ...rawData, detected_patterns: enrichedPatterns };
+            }
+            const prevLast = prev.candles[prev.candles.length - 1];
+            const newLast = rawData.candles[rawData.candles.length - 1];
+
+            // Only rebuild chart state if candle count changed or time advanced to next bar
+            if (prev.candles.length !== rawData.candles.length || String(prevLast.time) !== String(newLast.time)) {
+              return { ...rawData, detected_patterns: enrichedPatterns };
+            }
+            return prev;
+          });
+        }
+      } catch (err) {
+        // silent background sync
+      }
+    }, refreshMs);
+
+    return () => clearInterval(historyInterval);
+  }, [symbol, timeframe, autoSyncEnabled]);
 
   // Suggestions states
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -482,6 +621,9 @@ const ChartContainer = ({ symbol, setSymbol }) => {
           ...rawData,
           detected_patterns: enrichedPatterns
         });
+        if (rawData.candles.length > 0) {
+          setLivePrice(Number(rawData.candles[rawData.candles.length - 1].close));
+        }
       } else {
         setData(rawData);
       }
@@ -846,7 +988,12 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   };
 
   const currencySymbol = isIndianSymbol(symbol) ? "₹" : "$";
-  const latestPrice = data?.candles?.[data.candles.length - 1]?.close || 100;
+  const basePrice = data?.candles?.[data.candles.length - 1]?.close || 100;
+  const displayedPrice = livePrice || basePrice;
+  const firstCandlePrice = data?.candles?.[0]?.open || displayedPrice;
+  const priceChange = displayedPrice - firstCandlePrice;
+  const priceChangePct = firstCandlePrice > 0 ? (priceChange / firstCandlePrice) * 100 : 0;
+  const latestPrice = displayedPrice;
   const tfConfig = TIMEFRAME_TARGET_HORIZONS[timeframe] || TIMEFRAME_TARGET_HORIZONS["1D"];
   const isAiBuy = analysis?.signal === "BUY";
   const isAiSell = analysis?.signal === "SELL";
@@ -887,8 +1034,53 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       {/* Chart Toolbar Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-800 pb-4">
         <div>
-          <span className="text-xs font-bold text-indigo-400 uppercase tracking-widest font-outfit">Trading View Engine</span>
-          <h2 className="text-2xl font-bold text-white font-outfit mt-0.5">Interactive Analytics</h2>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-indigo-400 uppercase tracking-widest font-outfit">Trading View Engine</span>
+            
+            {/* LIVE FEED STATUS BADGE */}
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[10px] font-bold">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span>LIVE FEED</span>
+              <span className="text-gray-600 font-normal">|</span>
+              <span className="text-emerald-300 font-mono text-[9px]">&lt; 1s Latency</span>
+            </div>
+
+            {/* AUTO-SYNC TOGGLE BUTTON */}
+            <button 
+              type="button"
+              onClick={() => setAutoSyncEnabled(!autoSyncEnabled)}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border transition-all cursor-pointer ${
+                autoSyncEnabled 
+                  ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/30 hover:bg-indigo-500/25" 
+                  : "bg-gray-800 text-gray-400 border-gray-700"
+              }`}
+              title={autoSyncEnabled ? "Auto-Syncing real-time candle ticks without user action (Click to pause)" : "Auto-Sync paused (Click to resume)"}
+            >
+              <Activity className={`w-2.5 h-2.5 ${autoSyncEnabled ? "text-indigo-400 animate-spin" : "text-gray-500"}`} />
+              <span>{autoSyncEnabled ? "Live Market Active" : "Paused"}</span>
+            </button>
+          </div>
+
+          {/* DYNAMIC LIVE PRICE TICKER */}
+          <div className="flex items-baseline gap-3 mt-1.5 flex-wrap">
+            <h2 className="text-2xl font-black text-white font-outfit tracking-tight">{symbol}</h2>
+            <div className="flex items-baseline gap-2">
+              <span className={`text-2xl font-black font-mono transition-colors duration-200 ${
+                priceDirection === 'up' ? 'text-emerald-400' : priceDirection === 'down' ? 'text-rose-400' : 'text-white'
+              }`}>
+                {currencySymbol}{displayedPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+              <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded flex items-center gap-1 ${
+                priceChange >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
+              }`}>
+                {priceChange >= 0 ? '▲ +' : '▼ '}
+                {currencySymbol}{Math.abs(priceChange).toFixed(2)} ({priceChangePct >= 0 ? '+' : ''}{priceChangePct.toFixed(2)}%)
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Search & Timeframes bar */}

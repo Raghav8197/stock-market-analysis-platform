@@ -6,6 +6,7 @@ from app import models, schemas, auth, data_fetcher, ai_signal
 from app.patterns import scan_patterns
 from app.indicators import add_all_indicators
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 import urllib.request
 import urllib.parse
 import json
@@ -35,6 +36,27 @@ def get_stock_history(symbol: str, timeframe: str = Query("1D", description="Tim
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to fetch stock history: {str(e)}"
+        )
+
+@router.get("/{symbol}/quote")
+def get_stock_quote(symbol: str):
+    """Ultra-low latency live quote endpoint for real-time chart ticking and live streaming."""
+    try:
+        resolved = data_fetcher.resolve_ticker(symbol)
+        price = data_fetcher.get_live_ticker_price(symbol)
+        is_open, status_msg = data_fetcher.get_market_status(symbol)
+        return {
+            "symbol": symbol.upper(),
+            "resolved_ticker": resolved,
+            "price": price,
+            "is_open": is_open,
+            "status": status_msg,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to fetch live quote: {str(e)}"
         )
 
 @router.get("/{symbol}/summary")
