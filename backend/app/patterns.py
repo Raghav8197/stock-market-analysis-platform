@@ -246,23 +246,29 @@ def scan_patterns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 TIMEFRAME_TARGET_HORIZONS = {
-    "1m": "15-Min Scalp (F&O)",
-    "5m": "30-Min Momentum (F&O)",
-    "15m": "1-Hour Session (F&O)",
-    "60m": "Intraday F&O Target",
-    "1h": "Intraday F&O Target",
+    "1m": "Within 5 Mins (Same Day)",
+    "2m": "Within 5 Mins (Same Day)",
+    "3m": "Within 6 Mins (Same Day)",
+    "5m": "Within 10 Mins (Same Day)",
+    "15m": "Within 20 Mins (Same Day)",
+    "30m": "Within 45–60 Mins (Same Day)",
+    "60m": "Same-Day Session Target",
+    "1h": "Same-Day Session Target",
     "1D": "1–3 Days F&O Target",
     "1W": "Weekly Expiry Target",
 }
 
 MAX_HOLDING_BARS_MAP = {
-    "1m": 15,       # 15 mins scalp
-    "5m": 12,       # 60 mins scalp
-    "15m": 10,      # 2.5 hours session
-    "60m": 6,       # 1 day session
-    "1h": 6,        # 1 day session
-    "1D": 3,        # 1 to 3 days (Weekly/Monthly F&O contract)
-    "1W": 2,        # 2 weeks positional
+    "1m": 5,        # 1m -> within 5 mins (5 bars)
+    "2m": 3,        # 2m -> within 5-6 mins (3 bars)
+    "3m": 2,        # 3m -> within 6 mins (2 bars)
+    "5m": 2,        # 5m -> within 10 mins (2 bars)
+    "15m": 2,       # 15m -> within 20-30 mins (2 bars)
+    "30m": 2,       # 30m -> within 45-60 mins (2 bars)
+    "60m": 4,       # 60m -> within 4 hours (same-day session)
+    "1h": 4,        # 1h -> within 4 hours (same-day session)
+    "1D": 3,        # 1D -> 1 to 3 days (Weekly/Monthly F&O contract)
+    "1W": 2,        # 1W -> 2 weeks positional
 }
 
 def calculate_fno_strike(price: float) -> float:
@@ -313,9 +319,26 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
     horizon = TIMEFRAME_TARGET_HORIZONS.get(timeframe, "Target")
     max_bars = MAX_HOLDING_BARS_MAP.get(timeframe, 3)
 
-    is_intraday = timeframe in ["1m", "5m", "15m", "60m", "1h"]
-    target_mult = 0.65 if is_intraday else 0.75
-    sl_mult = 2.2 if is_intraday else 2.0
+    is_intraday = timeframe in ["1m", "2m", "3m", "5m", "15m", "30m", "60m", "1h"]
+
+    if timeframe in ["1m", "2m"]:
+        target_mult = 0.45
+        sl_mult = 1.8
+    elif timeframe in ["3m", "5m"]:
+        target_mult = 0.50
+        sl_mult = 2.0
+    elif timeframe in ["15m", "30m"]:
+        target_mult = 0.55
+        sl_mult = 2.0
+    elif timeframe in ["60m", "1h"]:
+        target_mult = 0.65
+        sl_mult = 2.2
+    elif timeframe == "1W":
+        target_mult = 0.85
+        sl_mult = 2.0
+    else:  # 1D
+        target_mult = 0.75
+        sl_mult = 2.0
 
     atr = calculate_atr(df)
     rsi = calculate_rsi(df)
@@ -338,8 +361,8 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
                 if neckline_val > max(val1, val2) * 1.02:
                     cur_atr = float(atr.iloc[i2])
                     c2 = float(close.iloc[i2])
-                    target = round(c2 + 0.8 * cur_atr, 2)
-                    sl = round(min(val1, val2) - 0.75 * cur_atr, 2)
+                    target = round(c2 + target_mult * cur_atr, 2)
+                    sl = round(min(val1, val2) - sl_mult * cur_atr, 2)
                     results.append({
                         "bar_index": i2,
                         "pattern": "Double Bottom (W-Pattern)",
@@ -368,8 +391,8 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
                 if neckline_val < min(val1, val2) * 0.98:
                     cur_atr = float(atr.iloc[i2])
                     c2 = float(close.iloc[i2])
-                    target = round(c2 - 0.8 * cur_atr, 2)
-                    sl = round(max(val1, val2) + 0.75 * cur_atr, 2)
+                    target = round(c2 - target_mult * cur_atr, 2)
+                    sl = round(max(val1, val2) + sl_mult * cur_atr, 2)
                     results.append({
                         "bar_index": i2,
                         "pattern": "Double Top (M-Pattern)",
@@ -408,8 +431,8 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
                             "pattern": "Head & Shoulders",
                             "is_bullish": False,
                             "entry": round(c3, 2),
-                            "target": round(c3 - 0.8 * cur_atr, 2),
-                            "stop_loss": round(val_rs + 0.75 * cur_atr, 2),
+                            "target": round(c3 - target_mult * cur_atr, 2),
+                            "stop_loss": round(val_rs + sl_mult * cur_atr, 2),
                             "confidence": "HIGH",
                             "pattern_points": [
                                 {"bar_index": i1, "price": round(val_ls, 2), "label": "Left Shoulder"},
@@ -526,7 +549,25 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
         strike_fmt = int(atm_strike) if atm_strike.is_integer() else atm_strike
         fno_strike_str = f"{strike_fmt} {opt_type}"
         fno_instrument = f"BUY {fno_strike_str} / {'BUY' if is_bullish else 'SHORT'} FUTURE"
-        holding_label = "1–3 Days" if timeframe in ["1D", "1W"] else ("15–30 Mins" if timeframe in ["1m", "5m"] else "1–2 Hours")
+        # Formatted holding label matching timeframe
+        if timeframe == "1m":
+            holding_label = "Within 5 Mins (Same Day)"
+        elif timeframe == "2m":
+            holding_label = "Within 5 Mins (Same Day)"
+        elif timeframe == "3m":
+            holding_label = "Within 6 Mins (Same Day)"
+        elif timeframe == "5m":
+            holding_label = "Within 10 Mins (Same Day)"
+        elif timeframe == "15m":
+            holding_label = "Within 20 Mins (Same Day)"
+        elif timeframe == "30m":
+            holding_label = "Within 45–60 Mins (Same Day)"
+        elif timeframe in ["60m", "1h"]:
+            holding_label = "Same-Day Session Target"
+        elif timeframe == "1D":
+            holding_label = "1–3 Days F&O Target"
+        else:
+            holding_label = "Weekly Expiry Target"
 
         r["option_type"] = opt_type
         r["fno_strike"] = fno_strike_str
@@ -540,9 +581,20 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
 
         hit_target = False
         hit_sl = False
+        expired_same_day = False
+        exit_bar_idx = end_bar - 1
+        entry_date = df.index[bi].date() if hasattr(df.index[bi], "date") else None
 
         if is_bullish is True:
             for j in range(bi + 1, end_bar):
+                # Enforce same-day session close for intraday intervals
+                if is_intraday and entry_date is not None and hasattr(df.index[j], "date"):
+                    if df.index[j].date() != entry_date:
+                        expired_same_day = True
+                        exit_bar_idx = j - 1
+                        bars_to_outcome = (j - 1) - bi
+                        break
+
                 hi = float(df["High"].iloc[j])
                 lo = float(df["Low"].iloc[j])
 
@@ -570,8 +622,11 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
             elif hit_sl:
                 outcome = "SL_HIT"
                 pnl_points = -round(entry - sl, 2)
+            elif expired_same_day:
+                outcome = "TIME_EXPIRED"
+                exit_price = float(df["Close"].iloc[exit_bar_idx])
+                pnl_points = round(exit_price - entry, 2)
             elif end_bar < n:
-                # Reached Max F&O Holding Period (Day 3) -> Closed on time to prevent Theta decay
                 outcome = "TIME_EXPIRED"
                 bars_to_outcome = max_bars
                 exit_price = float(df["Close"].iloc[end_bar - 1])
@@ -584,6 +639,14 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
 
         elif is_bullish is False:
             for j in range(bi + 1, end_bar):
+                # Enforce same-day session close for intraday intervals
+                if is_intraday and entry_date is not None and hasattr(df.index[j], "date"):
+                    if df.index[j].date() != entry_date:
+                        expired_same_day = True
+                        exit_bar_idx = j - 1
+                        bars_to_outcome = (j - 1) - bi
+                        break
+
                 hi = float(df["High"].iloc[j])
                 lo = float(df["Low"].iloc[j])
 
@@ -611,6 +674,10 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
             elif hit_sl:
                 outcome = "SL_HIT"
                 pnl_points = -round(sl - entry, 2)
+            elif expired_same_day:
+                outcome = "TIME_EXPIRED"
+                exit_price = float(df["Close"].iloc[exit_bar_idx])
+                pnl_points = round(entry - exit_price, 2)
             elif end_bar < n:
                 outcome = "TIME_EXPIRED"
                 bars_to_outcome = max_bars

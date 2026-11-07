@@ -63,67 +63,94 @@ const calculateFnoStrike = (price) => {
 
 const TIMEFRAME_TARGET_HORIZONS = {
   "1m": {
-    horizon: "5-Min Scalp Target",
-    shortName: "5-Min Target",
-    minPct: 0.0030,
-    maxPct: 0.0070,
-    mult: 1.2,
-    slMult: 0.75,
-    minSlPct: 0.0020,
-  },
-  "5m": {
-    horizon: "15-Min Momentum Target",
-    shortName: "15-Min Target",
-    minPct: 0.0070,
-    maxPct: 0.0150,
-    mult: 1.6,
-    slMult: 0.85,
+    horizon: "Within 5 Mins (Same Day)",
+    shortName: "Within 5m",
+    minPct: 0.0020,
+    maxPct: 0.0050,
+    mult: 0.45,
+    slMult: 1.8,
     minSlPct: 0.0040,
   },
-  "15m": {
-    horizon: "30-Min Session Target",
-    shortName: "30-Min Target",
-    minPct: 0.0120,
-    maxPct: 0.0260,
-    mult: 1.9,
-    slMult: 0.95,
+  "2m": {
+    horizon: "Within 5 Mins (Same Day)",
+    shortName: "Within 5m",
+    minPct: 0.0030,
+    maxPct: 0.0060,
+    mult: 0.45,
+    slMult: 1.8,
+    minSlPct: 0.0050,
+  },
+  "3m": {
+    horizon: "Within 6 Mins (Same Day)",
+    shortName: "Within 6m",
+    minPct: 0.0040,
+    maxPct: 0.0080,
+    mult: 0.50,
+    slMult: 2.0,
+    minSlPct: 0.0060,
+  },
+  "5m": {
+    horizon: "Within 10 Mins (Same Day)",
+    shortName: "Within 10m",
+    minPct: 0.0050,
+    maxPct: 0.0100,
+    mult: 0.50,
+    slMult: 2.0,
     minSlPct: 0.0070,
   },
+  "15m": {
+    horizon: "Within 20 Mins (Same Day)",
+    shortName: "Within 20m",
+    minPct: 0.0080,
+    maxPct: 0.0180,
+    mult: 0.55,
+    slMult: 2.0,
+    minSlPct: 0.0100,
+  },
+  "30m": {
+    horizon: "Within 45–60 Mins (Same Day)",
+    shortName: "Within 45–60m",
+    minPct: 0.0120,
+    maxPct: 0.0250,
+    mult: 0.55,
+    slMult: 2.0,
+    minSlPct: 0.0120,
+  },
   "60m": {
-    horizon: "1-Hour Horizon Target",
-    shortName: "1-Hour Target",
-    minPct: 0.0180,
-    maxPct: 0.0380,
-    mult: 2.2,
-    slMult: 1.10,
-    minSlPct: 0.0110,
+    horizon: "Same-Day Session Target",
+    shortName: "Same Day",
+    minPct: 0.0150,
+    maxPct: 0.0300,
+    mult: 0.65,
+    slMult: 2.2,
+    minSlPct: 0.0150,
   },
   "1h": {
-    horizon: "1-Hour Horizon Target",
-    shortName: "1-Hour Target",
-    minPct: 0.0180,
-    maxPct: 0.0380,
-    mult: 2.2,
-    slMult: 1.10,
-    minSlPct: 0.0110,
+    horizon: "Same-Day Session Target",
+    shortName: "Same Day",
+    minPct: 0.0150,
+    maxPct: 0.0300,
+    mult: 0.65,
+    slMult: 2.2,
+    minSlPct: 0.0150,
   },
   "1D": {
-    horizon: "Swing Target (1-3 Days)",
-    shortName: "1-3D Swing",
-    minPct: 0.0350,
-    maxPct: 0.0650,
-    mult: 2.5,
-    slMult: 1.25,
-    minSlPct: 0.0180,
+    horizon: "1–3 Days F&O Target",
+    shortName: "1–3D F&O",
+    minPct: 0.0300,
+    maxPct: 0.0600,
+    mult: 0.75,
+    slMult: 2.0,
+    minSlPct: 0.0200,
   },
   "1W": {
-    horizon: "Positional Target (1-2 Weeks)",
-    shortName: "1-2W Positional",
-    minPct: 0.0650,
-    maxPct: 0.1200,
-    mult: 3.0,
-    slMult: 1.50,
-    minSlPct: 0.0350,
+    horizon: "Weekly Expiry Target",
+    shortName: "Weekly F&O",
+    minPct: 0.0500,
+    maxPct: 0.1000,
+    mult: 0.85,
+    slMult: 2.0,
+    minSlPct: 0.0300,
   }
 };
 
@@ -206,22 +233,63 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
   const slPct = entry > 0 ? ((slPoints / entry) * 100).toFixed(2) : "0.00";
   const rr = slPoints > 0 ? (targetPoints / slPoints).toFixed(1) : "2.0";
 
-  // Evaluate whether subsequent price bars hit target or stop loss strictly within 1-3 days F&O window
+  // Evaluate whether subsequent price bars hit target or stop loss strictly within timeframe horizon & same-day session
   let outcome = p.outcome || "ACTIVE";
   let pnlPoints = p.pnl_points !== undefined ? Number(p.pnl_points) : 0;
   let barsToOutcome = p.bars_to_outcome !== undefined ? Number(p.bars_to_outcome) : 0;
 
-  const maxBars = (timeframe === "1D" || timeframe === "1W") ? 3 : (timeframe === "60m" || timeframe === "1h") ? 6 : 12;
+  const isIntraday = ["1m", "2m", "3m", "5m", "15m", "30m", "60m", "1h"].includes(timeframe);
+
+  const maxBars = 
+    timeframe === "1m" ? 5 :
+    timeframe === "2m" ? 3 :
+    timeframe === "3m" ? 2 :
+    timeframe === "5m" ? 2 :
+    timeframe === "15m" ? 2 :
+    timeframe === "30m" ? 2 :
+    (timeframe === "60m" || timeframe === "1h") ? 4 :
+    timeframe === "1D" ? 3 : 2;
+
+  const defaultHolding = 
+    timeframe === "1m" ? "Within 5 Mins (Same Day)" :
+    timeframe === "2m" ? "Within 5 Mins (Same Day)" :
+    timeframe === "3m" ? "Within 6 Mins (Same Day)" :
+    timeframe === "5m" ? "Within 10 Mins (Same Day)" :
+    timeframe === "15m" ? "Within 20 Mins (Same Day)" :
+    timeframe === "30m" ? "Within 45–60 Mins (Same Day)" :
+    (timeframe === "60m" || timeframe === "1h") ? "Same-Day Session Target" :
+    timeframe === "1D" ? "1–3 Days F&O Target" : "Weekly Expiry Target";
+
+  const getCandleDateStr = (t) => {
+    if (!t) return "";
+    if (typeof t === "number" || (!isNaN(Number(t)) && !String(t).includes("-"))) {
+      const d = new Date(Number(t) * 1000);
+      return d.toISOString().slice(0, 10);
+    }
+    return String(t).slice(0, 10);
+  };
 
   if ((!p.outcome || p.outcome === "ACTIVE") && candles && candles.length > 0) {
     const patternIdx = candles.findIndex(c => String(c.time) === String(p.time));
     if (patternIdx !== -1 && patternIdx < candles.length - 1) {
+      const entryDateStr = isIntraday ? getCandleDateStr(candles[patternIdx].time) : null;
       const endBar = Math.min(patternIdx + 1 + maxBars, candles.length);
       let hitTarget = false;
       let hitSl = false;
+      let expiredSameDay = false;
+      let exitBarIdx = endBar - 1;
 
       if (isBullish) {
         for (let j = patternIdx + 1; j < endBar; j++) {
+          if (isIntraday && entryDateStr) {
+            const curDateStr = getCandleDateStr(candles[j].time);
+            if (curDateStr && curDateStr !== entryDateStr) {
+              expiredSameDay = true;
+              exitBarIdx = j - 1;
+              barsToOutcome = (j - 1) - patternIdx;
+              break;
+            }
+          }
           const hi = Number(candles[j].high);
           const lo = Number(candles[j].low);
           if (hi >= target) {
@@ -240,6 +308,9 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
         } else if (hitSl) {
           outcome = "SL_HIT";
           pnlPoints = -Number((entry - stopLoss).toFixed(2));
+        } else if (expiredSameDay) {
+          outcome = "TIME_EXPIRED";
+          pnlPoints = Number((Number(candles[exitBarIdx].close) - entry).toFixed(2));
         } else if (endBar < candles.length) {
           outcome = "TIME_EXPIRED";
           barsToOutcome = maxBars;
@@ -247,6 +318,15 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
         }
       } else if (isBearish) {
         for (let j = patternIdx + 1; j < endBar; j++) {
+          if (isIntraday && entryDateStr) {
+            const curDateStr = getCandleDateStr(candles[j].time);
+            if (curDateStr && curDateStr !== entryDateStr) {
+              expiredSameDay = true;
+              exitBarIdx = j - 1;
+              barsToOutcome = (j - 1) - patternIdx;
+              break;
+            }
+          }
           const hi = Number(candles[j].high);
           const lo = Number(candles[j].low);
           if (lo <= target) {
@@ -265,6 +345,9 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
         } else if (hitSl) {
           outcome = "SL_HIT";
           pnlPoints = -Number((stopLoss - entry).toFixed(2));
+        } else if (expiredSameDay) {
+          outcome = "TIME_EXPIRED";
+          pnlPoints = Number((entry - Number(candles[exitBarIdx].close)).toFixed(2));
         } else if (endBar < candles.length) {
           outcome = "TIME_EXPIRED";
           barsToOutcome = maxBars;
@@ -278,7 +361,7 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
   const optType = isBullish ? "CE" : "PE";
   const fnoStrikeStr = `${atmStrike} ${optType}`;
   const fnoInstrument = p.fno_instrument || `BUY ${fnoStrikeStr} / ${isBullish ? 'BUY' : 'SHORT'} FUTURE`;
-  const maxHoldingDays = p.max_holding_days || (timeframe === "1D" || timeframe === "1W" ? "1–3 Days" : "15–30 Mins");
+  const maxHoldingDays = p.max_holding_days || defaultHolding;
 
   return {
     ...p,
@@ -459,7 +542,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       },
       timeScale: {
         borderColor: "#1F2937",
-        timeVisible: ["1m", "5m", "15m", "60m", "1h"].includes(timeframe),
+        timeVisible: ["1m", "2m", "3m", "5m", "15m", "30m", "60m", "1h"].includes(timeframe),
         secondsVisible: false,
       },
       rightPriceScale: {
@@ -861,24 +944,27 @@ const ChartContainer = ({ symbol, setSymbol }) => {
           </div>
 
           {/* Timeframes Selector with Scalp/Intraday/Swing Target Hints */}
-          <div className="bg-darkCard p-1 rounded-xl border border-gray-850 flex">
+          <div className="bg-darkCard p-1 rounded-xl border border-gray-850 flex flex-wrap gap-0.5">
             {[
               { id: "1m", label: "1m", sub: "5m tgt" },
-              { id: "5m", label: "5m", sub: "15m tgt" },
-              { id: "15m", label: "15m", sub: "30m tgt" },
-              { id: "60m", label: "60m", sub: "1h tgt" },
-              { id: "1D", label: "1D", sub: "Swing" },
-              { id: "1W", label: "1W", sub: "Pos." }
+              { id: "2m", label: "2m", sub: "5m tgt" },
+              { id: "3m", label: "3m", sub: "6m tgt" },
+              { id: "5m", label: "5m", sub: "10m tgt" },
+              { id: "15m", label: "15m", sub: "20m tgt" },
+              { id: "30m", label: "30m", sub: "Same Day" },
+              { id: "60m", label: "60m", sub: "Same Day" },
+              { id: "1D", label: "1D", sub: "1-3D F&O" },
+              { id: "1W", label: "1W", sub: "Weekly" }
             ].map(({ id, label, sub }) => (
               <button
                 key={id}
                 onClick={() => setTimeframe(id)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex flex-col items-center ${
+                className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex flex-col items-center ${
                   timeframe === id 
                     ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30" 
                     : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
                 }`}
-                title={`${label} Candle → ${sub}`}
+                title={`${label} Candle → Target ${sub}`}
               >
                 <span>{label}</span>
                 <span className={`text-[8px] font-normal leading-none mt-0.5 ${timeframe === id ? "text-indigo-200" : "text-gray-500"}`}>{sub}</span>

@@ -56,13 +56,15 @@ def fetch_history(symbol: str, timeframe: str = "1D", limit: int = 250) -> pd.Da
     ticker_symbol = resolve_ticker(symbol)
     
     # Map timeframe
-    # timeframes: "1m", "5m", "15m", "60m", "1h", "1D", "1W"
-    if timeframe == "1m":
-        period, interval = "1d", "1m"
-    elif timeframe == "5m":
-        period, interval = "5d", "5m"
-    elif timeframe == "15m":
-        period, interval = "5d", "15m"
+    # timeframes: "1m", "2m", "3m", "5m", "15m", "30m", "60m", "1h", "1D", "1W"
+    needs_resample_3m = False
+    if timeframe in ["1m", "2m"]:
+        period, interval = "2d", timeframe
+    elif timeframe == "3m":
+        period, interval = "2d", "1m"
+        needs_resample_3m = True
+    elif timeframe in ["5m", "15m", "30m"]:
+        period, interval = "5d", timeframe
     elif timeframe in ["60m", "1h"]:
         period, interval = "1mo", "1h"
     elif timeframe == "1W":
@@ -76,6 +78,15 @@ def fetch_history(symbol: str, timeframe: str = "1D", limit: int = 250) -> pd.Da
         
         if df.empty:
             raise ValueError(f"No historical data returned for ticker {ticker_symbol}")
+
+        if needs_resample_3m:
+            df = df.resample("3min").agg({
+                "Open": "first",
+                "High": "max",
+                "Low": "min",
+                "Close": "last",
+                "Volume": "sum"
+            }).dropna()
             
         # Clean columns to standard Capitalized names
         df = df.rename(columns={
@@ -334,10 +345,16 @@ def generate_mock_history(symbol: str, timeframe: str, limit: int) -> pd.DataFra
     # Set interval in terms of timedelta
     if timeframe == "1m":
         delta = timedelta(minutes=1)
+    elif timeframe == "2m":
+        delta = timedelta(minutes=2)
+    elif timeframe == "3m":
+        delta = timedelta(minutes=3)
     elif timeframe == "5m":
         delta = timedelta(minutes=5)
     elif timeframe == "15m":
         delta = timedelta(minutes=15)
+    elif timeframe == "30m":
+        delta = timedelta(minutes=30)
     elif timeframe in ["60m", "1h"]:
         delta = timedelta(hours=1)
     elif timeframe == "1W":
@@ -612,7 +629,7 @@ def analyze_and_package_stock(symbol: str, timeframe: str = "1D") -> Dict[str, A
     candles = []
     patterns_list = []
     
-    is_intraday = timeframe in ["1m", "5m", "15m", "60m", "1h"]
+    is_intraday = timeframe in ["1m", "2m", "3m", "5m", "15m", "30m", "60m", "1h"]
     
     for idx, row in df_full.iterrows():
         # Handle time mapping
