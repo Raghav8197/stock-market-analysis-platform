@@ -142,7 +142,34 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
     ? (matchedCandle.high - matchedCandle.low) 
     : price * tfConfig.minPct;
 
-  let entry = p.entry ? Number(p.entry) : price;
+  // STRICT CONFIRMATION: If we are not sure (uncertain, neutral, low confidence, or no directional edge), DO NOT give a random entry!
+  const isConfidenceHighEnough = p.confidence === "HIGH" || p.confidence === "MEDIUM";
+  const hasDirection = isBullish || isBearish;
+  const isActionable = hasDirection && isConfidenceHighEnough && p.recommendation !== "WAIT" && p.recommendation !== "WATCH" && Boolean(p.entry);
+
+  if (!isActionable) {
+    return {
+      ...p,
+      is_actionable: false,
+      recommendation: "WAIT",
+      target_horizon: tfConfig.horizon,
+      horizon_short: tfConfig.shortName,
+      timeframe: timeframe,
+      entry: null,
+      target: null,
+      stop_loss: null,
+      target_points: 0,
+      target_pct: "0.00",
+      sl_points: 0,
+      sl_pct: "0.00",
+      risk_reward: null,
+      confidence: p.confidence || "LOW",
+      outcome: p.outcome || "UNCERTAIN",
+      pnl_points: 0
+    };
+  }
+
+  let entry = Number(p.entry);
   let target = p.target ? Number(p.target) : 0;
   let stopLoss = p.stop_loss ? Number(p.stop_loss) : 0;
 
@@ -157,9 +184,6 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
     } else if (isBearish) {
       target = entry - targetMove;
       stopLoss = entry + slMove;
-    } else {
-      target = entry + targetMove * 0.7;
-      stopLoss = entry - slMove * 0.7;
     }
   }
 
@@ -210,7 +234,8 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
 
   return {
     ...p,
-    recommendation: isBullish ? "BUY" : isBearish ? "SELL" : (p.recommendation || "WATCH"),
+    is_actionable: true,
+    recommendation: isBullish ? "BUY" : "SELL",
     target_horizon: tfConfig.horizon,
     horizon_short: tfConfig.shortName,
     timeframe: timeframe,
@@ -484,13 +509,13 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       }));
       createSeriesMarkers(candleSeries, markers);
 
-      // Draw Entry / Target / Stop Loss price lines for selected or latest pattern
+      // Draw Entry / Target / Stop Loss price lines for selected or latest pattern ONLY IF CONFIRMED
       const currencySym = isIndianSymbol(symbol) ? "₹" : "$";
       const activeP = (selectedPatternIndex !== null && data.detected_patterns[selectedPatternIndex])
         ? data.detected_patterns[selectedPatternIndex]
         : data.detected_patterns[data.detected_patterns.length - 1];
 
-      if (activeP && activeP.entry && activeP.target && activeP.stop_loss) {
+      if (activeP && activeP.is_actionable !== false && (activeP.recommendation === 'BUY' || activeP.recommendation === 'SELL') && activeP.confidence !== 'LOW' && activeP.entry && activeP.target && activeP.stop_loss) {
         const isBuy = activeP.recommendation === 'BUY';
 
         // Entry line (yellow/gold dashed)
@@ -689,10 +714,10 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   const tfConfig = TIMEFRAME_TARGET_HORIZONS[timeframe] || TIMEFRAME_TARGET_HORIZONS["1D"];
   const isAiBuy = analysis?.signal === "BUY";
   const isAiSell = analysis?.signal === "SELL";
-  const aiMovePct = isAiBuy ? tfConfig.minPct * 1.5 : isAiSell ? -tfConfig.minPct * 1.5 : tfConfig.minPct * 0.8;
-  const aiTarget = Number((latestPrice * (1 + aiMovePct)).toFixed(2));
-  const aiStopLoss = Number((latestPrice * (1 + (isAiBuy ? -tfConfig.minSlPct * 1.2 : isAiSell ? tfConfig.minSlPct * 1.2 : -tfConfig.minSlPct))).toFixed(2));
-  const aiTargetPoints = Number(Math.abs(aiTarget - latestPrice).toFixed(2));
+  const aiMovePct = isAiBuy ? tfConfig.minPct * 1.5 : isAiSell ? -tfConfig.minPct * 1.5 : 0;
+  const aiTarget = (isAiBuy || isAiSell) ? Number((latestPrice * (1 + aiMovePct)).toFixed(2)) : null;
+  const aiStopLoss = (isAiBuy || isAiSell) ? Number((latestPrice * (1 + (isAiBuy ? -tfConfig.minSlPct * 1.2 : tfConfig.minSlPct * 1.2))).toFixed(2)) : null;
+  const aiTargetPoints = aiTarget ? Number(Math.abs(aiTarget - latestPrice).toFixed(2)) : 0;
 
   // Current active pattern
   const activePattern = (selectedPatternIndex !== null && data?.detected_patterns?.[selectedPatternIndex])
@@ -985,50 +1010,62 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                       </span>
                     </div>
 
-                    <div className="mt-2 text-xs font-bold text-white flex items-center justify-between">
-                      <span>
-                        {activePattern.recommendation === "BUY" ? (
-                          <span className="text-emerald-400 font-extrabold">▶ BUY HERE:</span>
-                        ) : activePattern.recommendation === "SELL" ? (
-                          <span className="text-rose-400 font-extrabold">▶ SELL HERE:</span>
-                        ) : (
-                          <span className="text-amber-400 font-extrabold">▶ WATCH / ENTRY:</span>
-                        )}
-                        {" "}{currencySymbol}{activePattern.entry?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
+                    {activePattern.is_actionable && activePattern.entry && activePattern.target && activePattern.stop_loss ? (
+                      <>
+                        <div className="mt-2 text-xs font-bold text-white flex items-center justify-between">
+                          <span>
+                            {activePattern.recommendation === "BUY" ? (
+                              <span className="text-emerald-400 font-extrabold">▶ BUY HERE:</span>
+                            ) : (
+                              <span className="text-rose-400 font-extrabold">▶ SELL HERE:</span>
+                            )}
+                            {" "}{currencySymbol}{activePattern.entry?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
 
-                    <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-800 text-[10px]">
-                      <div>
-                        <span className="text-gray-400 text-[9px] font-bold uppercase block">
-                          EXIT TARGET ({activePattern.horizon_short || 'Target'})
-                        </span>
-                        <span className={`font-mono font-bold block ${activePattern.recommendation === 'BUY' ? 'text-emerald-400' : activePattern.recommendation === 'SELL' ? 'text-rose-400' : 'text-amber-400'}`}>
-                          {currencySymbol}{activePattern.target?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                        <span className="text-[9px] font-mono text-gray-500 block">
-                          {activePattern.recommendation === 'BUY' ? `+${activePattern.target_points} pts (+${activePattern.target_pct}%)` : activePattern.recommendation === 'SELL' ? `-${activePattern.target_points} pts (-${activePattern.target_pct}%)` : `±${activePattern.target_points} pts`}
-                        </span>
+                        <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-800 text-[10px]">
+                          <div>
+                            <span className="text-gray-400 text-[9px] font-bold uppercase block">
+                              EXIT TARGET ({activePattern.horizon_short || 'Target'})
+                            </span>
+                            <span className={`font-mono font-bold block ${activePattern.recommendation === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {currencySymbol}{activePattern.target?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-[9px] font-mono text-gray-500 block">
+                              {activePattern.recommendation === 'BUY' ? `+${activePattern.target_points} pts (+${activePattern.target_pct}%)` : `-${activePattern.target_points} pts (-${activePattern.target_pct}%)`}
+                            </span>
+                          </div>
+                          <div className="border-l border-gray-850 pl-2">
+                            <span className="text-gray-400 text-[9px] font-bold uppercase block">STOP LOSS</span>
+                            <span className="font-mono font-bold text-rose-400 block">
+                              {currencySymbol}{activePattern.stop_loss?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-[9px] font-mono text-gray-500 block">
+                              {activePattern.recommendation === 'BUY' ? `-${activePattern.sl_points} pts` : `+${activePattern.sl_points} pts`}
+                            </span>
+                          </div>
+                          <div className="border-l border-gray-850 pl-2">
+                            <span className="text-gray-400 text-[9px] font-bold uppercase block">RISK:REWARD</span>
+                            <span className="font-mono font-bold text-indigo-400 text-xs block">
+                              1:{activePattern.risk_reward}
+                            </span>
+                            <span className="text-[8px] font-bold text-gray-500 uppercase block">
+                              {activePattern.confidence}
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="mt-2.5 p-2 rounded-lg bg-amber-950/20 border border-amber-500/25 text-amber-300">
+                        <div className="flex items-center gap-1.5 font-bold text-xs">
+                          <AlertOctagon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>NO ENTRY — SETUP NOT CONFIRMED</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1 leading-snug">
+                          Conviction is low / market indecision. To protect capital, no entry, target, or stop loss is generated until confirmed.
+                        </p>
                       </div>
-                      <div className="border-l border-gray-850 pl-2">
-                        <span className="text-gray-400 text-[9px] font-bold uppercase block">STOP LOSS</span>
-                        <span className="font-mono font-bold text-rose-400 block">
-                          {currencySymbol}{activePattern.stop_loss?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                        <span className="text-[9px] font-mono text-gray-500 block">
-                          {activePattern.recommendation === 'BUY' ? `-${activePattern.sl_points} pts` : `+${activePattern.sl_points} pts`}
-                        </span>
-                      </div>
-                      <div className="border-l border-gray-850 pl-2">
-                        <span className="text-gray-400 text-[9px] font-bold uppercase block">RISK:REWARD</span>
-                        <span className="font-mono font-bold text-indigo-400 text-xs block">
-                          1:{activePattern.risk_reward}
-                        </span>
-                        <span className="text-[8px] font-bold text-gray-500 uppercase block">
-                          {activePattern.confidence}
-                        </span>
-                      </div>
-                    </div>
+                    )}
 
                     {/* Outcome Status Badge */}
                     <div className="mt-2 pt-2 border-t border-gray-850 flex items-center justify-between">
@@ -1118,26 +1155,38 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                   </div>
 
                   {/* Projected AI Targets & Risk Level */}
-                  <div className="pt-2 border-t border-gray-900/60 grid grid-cols-2 gap-2 text-[10px]">
-                    <div className="bg-gray-900/60 p-2 rounded-lg border border-gray-850">
-                      <span className="text-gray-400 block text-[9px] font-bold uppercase">Expected Target</span>
-                      <span className={`font-mono font-bold text-xs ${isAiBuy ? 'text-emerald-400' : isAiSell ? 'text-rose-400' : 'text-amber-400'}`}>
-                        {currencySymbol}{aiTarget?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                      <span className="text-[9px] text-gray-500 block">
-                        {isAiBuy ? `+${aiTargetPoints} pts (+${(Math.abs(aiMovePct) * 100).toFixed(1)}%)` : isAiSell ? `-${aiTargetPoints} pts (-${(Math.abs(aiMovePct) * 100).toFixed(1)}%)` : 'Consolidation Target'}
-                      </span>
+                  {(isAiBuy || isAiSell) ? (
+                    <div className="pt-2 border-t border-gray-900/60 grid grid-cols-2 gap-2 text-[10px]">
+                      <div className="bg-gray-900/60 p-2 rounded-lg border border-gray-850">
+                        <span className="text-gray-400 block text-[9px] font-bold uppercase">Expected Target</span>
+                        <span className={`font-mono font-bold text-xs ${isAiBuy ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {currencySymbol}{aiTarget?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-[9px] text-gray-500 block">
+                          {isAiBuy ? `+${aiTargetPoints} pts (+${(Math.abs(aiMovePct) * 100).toFixed(1)}%)` : `-${aiTargetPoints} pts (-${(Math.abs(aiMovePct) * 100).toFixed(1)}%)`}
+                        </span>
+                      </div>
+                      <div className="bg-gray-900/60 p-2 rounded-lg border border-gray-850">
+                        <span className="text-gray-400 block text-[9px] font-bold uppercase">Stop Loss</span>
+                        <span className="font-mono font-bold text-xs text-rose-400">
+                          {currencySymbol}{aiStopLoss?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-[9px] text-gray-500 block">
+                          Risk Invalidation
+                        </span>
+                      </div>
                     </div>
-                    <div className="bg-gray-900/60 p-2 rounded-lg border border-gray-850">
-                      <span className="text-gray-400 block text-[9px] font-bold uppercase">Stop Loss</span>
-                      <span className="font-mono font-bold text-xs text-rose-400">
-                        {currencySymbol}{aiStopLoss?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                      <span className="text-[9px] text-gray-500 block">
-                        Risk Invalidation
-                      </span>
+                  ) : (
+                    <div className="pt-2 border-t border-gray-900/60 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px]">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <AlertOctagon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>HOLD — NO ENTRY ADVISED</span>
+                      </div>
+                      <p className="text-gray-400 mt-0.5 text-[9px] leading-tight">
+                        Directional edge is not clear. Preserve capital and wait for strong trend breakout.
+                      </p>
                     </div>
-                  </div>
+                  )}
 
                   {/* Reasons list (scrollable if too long) */}
                   <div className="space-y-1 max-h-20 overflow-y-auto pr-1">
@@ -1293,13 +1342,13 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                         )}
 
                         {/* Entry / Target / Stop Loss Trading Levels */}
-                        {p.entry && (
+                        {p.is_actionable && p.entry && p.target && p.stop_loss ? (
                           <div className="mt-2 space-y-1.5 pt-2 border-t border-gray-900/50">
                             {/* Entry */}
                             <div className="flex justify-between items-center">
                               <span className="text-[10px] text-amber-400 font-bold uppercase flex items-center gap-1">
                                 <span className="w-2 h-0.5 bg-amber-400 inline-block rounded"></span>
-                                {isBuy ? "Buy Here (Entry)" : isSell ? "Sell Here (Entry)" : "Entry"}
+                                {isBuy ? "Buy Here (Entry)" : "Sell Here (Entry)"}
                               </span>
                               <span className="text-white font-bold font-mono text-[11px]">
                                 {currencySymbol}{p.entry?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1376,6 +1425,14 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                                 </span>
                               </div>
                             )}
+                          </div>
+                        ) : (
+                          <div className="mt-2 p-2 rounded-lg bg-gray-900/60 border border-gray-800 text-[10px] flex items-center justify-between text-gray-400">
+                            <span className="font-semibold text-amber-400/90 flex items-center gap-1">
+                              <AlertOctagon className="w-3 h-3 text-amber-400" />
+                              No Entry Signal
+                            </span>
+                            <span className="text-gray-500 text-[9px] uppercase font-bold tracking-tight">Wait For Confirmation</span>
                           </div>
                         )}
                       </div>
