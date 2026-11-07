@@ -700,13 +700,34 @@ def analyze_and_package_stock(symbol: str, timeframe: str = "1D") -> Dict[str, A
             "target_points": target_pts,
             "target_horizon": result.get("target_horizon", "Target"),
             "confidence": result["confidence"],
+            "outcome": result.get("outcome", "ACTIVE"),
+            "bars_to_outcome": result.get("bars_to_outcome", 0),
+            "pnl_points": result.get("pnl_points", 0.0),
             "pattern_points": mapped_points,
         })
                 
+    # Calculate strategy accuracy statistics
+    targets_hit_count = sum(1 for p in patterns_list if p.get("outcome") == "TARGET_HIT")
+    sl_hit_count = sum(1 for p in patterns_list if p.get("outcome") == "SL_HIT")
+    active_count = sum(1 for p in patterns_list if p.get("outcome") == "ACTIVE")
+    decided = targets_hit_count + sl_hit_count
+    win_rate = round((targets_hit_count / decided) * 100, 1) if decided > 0 else 0.0
+    total_pnl = round(sum(p.get("pnl_points", 0.0) for p in patterns_list if p.get("outcome") in ["TARGET_HIT", "SL_HIT"]), 2)
+
+    accuracy_stats = {
+        "total_patterns": len(patterns_list),
+        "targets_hit": targets_hit_count,
+        "sl_hit": sl_hit_count,
+        "active_trades": active_count,
+        "win_rate": win_rate,
+        "net_pnl_points": total_pnl
+    }
+
     return {
         "symbol": symbol.upper(),
         "resolved_ticker": resolve_ticker(symbol),
         "timeframe": timeframe,
         "candles": candles,
-        "detected_patterns": patterns_list
+        "detected_patterns": patterns_list,
+        "accuracy_stats": accuracy_stats
     }

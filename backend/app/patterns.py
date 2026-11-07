@@ -545,8 +545,82 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
                 ],
             })
 
-    # Attach target_horizon and sort results by bar_index for chronological ordering
+    # Evaluate whether subsequent price bars hit target or stop loss
+    n = len(df)
     for r in results:
         r["target_horizon"] = horizon
+        bi = r["bar_index"]
+        entry = float(r["entry"])
+        target = float(r["target"])
+        sl = float(r["stop_loss"])
+        is_bullish = r["is_bullish"]
+
+        outcome = "ACTIVE"
+        bars_to_outcome = 0
+        pnl_points = 0.0
+
+        if is_bullish is True:
+            for j in range(bi + 1, n):
+                hi = float(df["High"].iloc[j])
+                lo = float(df["Low"].iloc[j])
+                hit_target = hi >= target
+                hit_sl = lo <= sl
+
+                if hit_target and hit_sl:
+                    outcome = "TARGET_HIT" if float(df["Open"].iloc[j]) >= entry else "SL_HIT"
+                    bars_to_outcome = j - bi
+                    break
+                elif hit_target:
+                    outcome = "TARGET_HIT"
+                    bars_to_outcome = j - bi
+                    break
+                elif hit_sl:
+                    outcome = "SL_HIT"
+                    bars_to_outcome = j - bi
+                    break
+
+            if outcome == "TARGET_HIT":
+                pnl_points = round(target - entry, 2)
+            elif outcome == "SL_HIT":
+                pnl_points = -round(entry - sl, 2)
+            else:
+                curr_c = float(df["Close"].iloc[-1])
+                pnl_points = round(curr_c - entry, 2)
+
+        elif is_bullish is False:
+            for j in range(bi + 1, n):
+                hi = float(df["High"].iloc[j])
+                lo = float(df["Low"].iloc[j])
+                hit_target = lo <= target
+                hit_sl = hi >= sl
+
+                if hit_target and hit_sl:
+                    outcome = "TARGET_HIT" if float(df["Open"].iloc[j]) <= entry else "SL_HIT"
+                    bars_to_outcome = j - bi
+                    break
+                elif hit_target:
+                    outcome = "TARGET_HIT"
+                    bars_to_outcome = j - bi
+                    break
+                elif hit_sl:
+                    outcome = "SL_HIT"
+                    bars_to_outcome = j - bi
+                    break
+
+            if outcome == "TARGET_HIT":
+                pnl_points = round(entry - target, 2)
+            elif outcome == "SL_HIT":
+                pnl_points = -round(sl - entry, 2)
+            else:
+                curr_c = float(df["Close"].iloc[-1])
+                pnl_points = round(entry - curr_c, 2)
+        else:
+            outcome = "WATCH"
+            pnl_points = 0.0
+
+        r["outcome"] = outcome
+        r["bars_to_outcome"] = bars_to_outcome
+        r["pnl_points"] = pnl_points
+
     results.sort(key=lambda r: r["bar_index"])
     return results
