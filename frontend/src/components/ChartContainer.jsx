@@ -143,26 +143,24 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
     : price * tfConfig.minPct;
 
   let entry = p.entry ? Number(p.entry) : price;
-  
-  // Calculate dynamic timeframe-calibrated target and stop loss move
-  const targetMove = Math.min(
-    Math.max(candleRange * tfConfig.mult, entry * tfConfig.minPct),
-    entry * tfConfig.maxPct
-  );
-  const slMove = Math.max(candleRange * tfConfig.slMult, entry * tfConfig.minSlPct);
+  let target = p.target ? Number(p.target) : 0;
+  let stopLoss = p.stop_loss ? Number(p.stop_loss) : 0;
 
-  let target = 0;
-  let stopLoss = 0;
+  // If target or stop loss not provided by backend, calculate with high-probability volatility model
+  if (!target || !stopLoss) {
+    const targetMove = Math.max(candleRange * 0.8, entry * tfConfig.minPct * 0.9);
+    const slMove = Math.max(candleRange * 2.2, entry * tfConfig.minPct * 2.2);
 
-  if (isBullish) {
-    target = entry + targetMove;
-    stopLoss = entry - slMove;
-  } else if (isBearish) {
-    target = entry - targetMove;
-    stopLoss = entry + slMove;
-  } else {
-    target = entry + targetMove * 0.7;
-    stopLoss = entry - slMove * 0.7;
+    if (isBullish) {
+      target = entry + targetMove;
+      stopLoss = entry - slMove;
+    } else if (isBearish) {
+      target = entry - targetMove;
+      stopLoss = entry + slMove;
+    } else {
+      target = entry + targetMove * 0.7;
+      stopLoss = entry - slMove * 0.7;
+    }
   }
 
   const targetPoints = Math.abs(target - entry);
