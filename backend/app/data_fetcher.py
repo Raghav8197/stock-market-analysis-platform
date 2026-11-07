@@ -56,13 +56,15 @@ def fetch_history(symbol: str, timeframe: str = "1D", limit: int = 250) -> pd.Da
     ticker_symbol = resolve_ticker(symbol)
     
     # Map timeframe
-    # timeframes: "1m", "5m", "15m", "1D", "1W"
+    # timeframes: "1m", "5m", "15m", "60m", "1h", "1D", "1W"
     if timeframe == "1m":
         period, interval = "1d", "1m"
     elif timeframe == "5m":
         period, interval = "5d", "5m"
     elif timeframe == "15m":
         period, interval = "5d", "15m"
+    elif timeframe in ["60m", "1h"]:
+        period, interval = "1mo", "1h"
     elif timeframe == "1W":
         period, interval = "1y", "1wk"
     else: # Default 1D
@@ -336,6 +338,8 @@ def generate_mock_history(symbol: str, timeframe: str, limit: int) -> pd.DataFra
         delta = timedelta(minutes=5)
     elif timeframe == "15m":
         delta = timedelta(minutes=15)
+    elif timeframe in ["60m", "1h"]:
+        delta = timedelta(hours=1)
     elif timeframe == "1W":
         delta = timedelta(weeks=1)
     else:
@@ -608,7 +612,7 @@ def analyze_and_package_stock(symbol: str, timeframe: str = "1D") -> Dict[str, A
     candles = []
     patterns_list = []
     
-    is_intraday = timeframe in ["1m", "5m"]
+    is_intraday = timeframe in ["1m", "5m", "15m", "60m", "1h"]
     
     for idx, row in df_full.iterrows():
         # Handle time mapping
@@ -637,8 +641,8 @@ def analyze_and_package_stock(symbol: str, timeframe: str = "1D") -> Dict[str, A
             "bb_lower": row["BB_Lower"] if not pd.isna(row["BB_Lower"]) else None,
         })
 
-    # Detect patterns with trading levels
-    detected = detect_patterns_with_levels(df_full)
+    # Detect patterns with trading levels scaled to timeframe
+    detected = detect_patterns_with_levels(df_full, timeframe=timeframe)
 
     for result in detected:
         bi = result["bar_index"]
@@ -678,6 +682,11 @@ def analyze_and_package_stock(symbol: str, timeframe: str = "1D") -> Dict[str, A
                 "label": pt["label"],
             })
 
+        entry_val = round(float(result["entry"]), 2)
+        target_val = round(float(result["target"]), 2)
+        sl_val = round(float(result["stop_loss"]), 2)
+        target_pts = round(abs(target_val - entry_val), 2)
+
         patterns_list.append({
             "time": time_val_p,
             "pattern": result["pattern"],
@@ -685,9 +694,11 @@ def analyze_and_package_stock(symbol: str, timeframe: str = "1D") -> Dict[str, A
             "position": position,
             "color": color,
             "recommendation": rec,
-            "entry": round(float(result["entry"]), 2),
-            "target": round(float(result["target"]), 2),
-            "stop_loss": round(float(result["stop_loss"]), 2),
+            "entry": entry_val,
+            "target": target_val,
+            "stop_loss": sl_val,
+            "target_points": target_pts,
+            "target_horizon": result.get("target_horizon", "Target"),
             "confidence": result["confidence"],
             "pattern_points": mapped_points,
         })

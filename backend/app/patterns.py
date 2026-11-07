@@ -245,14 +245,25 @@ def scan_patterns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def detect_patterns_with_levels(df: pd.DataFrame) -> List[Dict[str, Any]]:
+TIMEFRAME_TARGET_HORIZONS = {
+    "1m": "5-Min Scalp Target",
+    "5m": "15-Min Momentum Target",
+    "15m": "30-Min Session Target",
+    "60m": "1-Hour Horizon Target",
+    "1h": "1-Hour Horizon Target",
+    "1D": "Swing Target (1-3 Days)",
+    "1W": "Positional Target (1-2 Weeks)",
+}
+
+def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List[Dict[str, Any]]:
     """
-    Detect all patterns and compute actionable trading levels (entry, target, stop_loss).
-    Returns a list of dicts with pattern details and key chart points.
-    The dataframe must already have OHLCV columns.
+    Detect all patterns and compute actionable trading levels (entry, target, stop_loss)
+    scaled to the selected candle timeframe.
+    Returns a list of dicts with pattern details, target horizons, and key chart points.
     """
     results: List[Dict[str, Any]] = []
     close = df["Close"]
+    horizon = TIMEFRAME_TARGET_HORIZONS.get(timeframe, "Target")
 
     # ── 1. Double Bottom (W-Pattern) ───────────────────────────────────────
     peaks, troughs = find_local_extrema(close, window=5)
@@ -534,6 +545,8 @@ def detect_patterns_with_levels(df: pd.DataFrame) -> List[Dict[str, Any]]:
                 ],
             })
 
-    # Sort results by bar_index for chronological ordering
+    # Attach target_horizon and sort results by bar_index for chronological ordering
+    for r in results:
+        r["target_horizon"] = horizon
     results.sort(key=lambda r: r["bar_index"])
     return results

@@ -27,7 +27,7 @@ SCREENER_UNIVERSE = [
 ]
 
 @router.get("/{symbol}/history")
-def get_stock_history(symbol: str, timeframe: str = Query("1D", description="Timeframe: 1m, 5m, 1D, 1W")):
+def get_stock_history(symbol: str, timeframe: str = Query("1D", description="Timeframe: 1m, 5m, 15m, 60m, 1h, 1D, 1W")):
     try:
         data = data_fetcher.analyze_and_package_stock(symbol, timeframe)
         return data

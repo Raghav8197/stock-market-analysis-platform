@@ -45,7 +45,74 @@ import {
   Loader2
 } from "lucide-react";
 
-const enrichPatternWithLevels = (p, candles) => {
+const TIMEFRAME_TARGET_HORIZONS = {
+  "1m": {
+    horizon: "5-Min Scalp Target",
+    shortName: "5-Min Target",
+    minPct: 0.0030,
+    maxPct: 0.0070,
+    mult: 1.2,
+    slMult: 0.75,
+    minSlPct: 0.0020,
+  },
+  "5m": {
+    horizon: "15-Min Momentum Target",
+    shortName: "15-Min Target",
+    minPct: 0.0070,
+    maxPct: 0.0150,
+    mult: 1.6,
+    slMult: 0.85,
+    minSlPct: 0.0040,
+  },
+  "15m": {
+    horizon: "30-Min Session Target",
+    shortName: "30-Min Target",
+    minPct: 0.0120,
+    maxPct: 0.0260,
+    mult: 1.9,
+    slMult: 0.95,
+    minSlPct: 0.0070,
+  },
+  "60m": {
+    horizon: "1-Hour Horizon Target",
+    shortName: "1-Hour Target",
+    minPct: 0.0180,
+    maxPct: 0.0380,
+    mult: 2.2,
+    slMult: 1.10,
+    minSlPct: 0.0110,
+  },
+  "1h": {
+    horizon: "1-Hour Horizon Target",
+    shortName: "1-Hour Target",
+    minPct: 0.0180,
+    maxPct: 0.0380,
+    mult: 2.2,
+    slMult: 1.10,
+    minSlPct: 0.0110,
+  },
+  "1D": {
+    horizon: "Swing Target (1-3 Days)",
+    shortName: "1-3D Swing",
+    minPct: 0.0350,
+    maxPct: 0.0650,
+    mult: 2.5,
+    slMult: 1.25,
+    minSlPct: 0.0180,
+  },
+  "1W": {
+    horizon: "Positional Target (1-2 Weeks)",
+    shortName: "1-2W Positional",
+    minPct: 0.0650,
+    maxPct: 0.1200,
+    mult: 3.0,
+    slMult: 1.50,
+    minSlPct: 0.0350,
+  }
+};
+
+const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
+  const tfConfig = TIMEFRAME_TARGET_HORIZONS[timeframe] || TIMEFRAME_TARGET_HORIZONS["1D"];
   const name = p.pattern || "Pattern";
   const isBullish = 
     p.recommendation === "BUY" || 
@@ -70,32 +137,43 @@ const enrichPatternWithLevels = (p, candles) => {
   const matchedCandle = candles?.find(c => c.time === p.time) || lastCandle;
   const candleRange = matchedCandle && matchedCandle.high > matchedCandle.low 
     ? (matchedCandle.high - matchedCandle.low) 
-    : price * 0.025;
+    : price * tfConfig.minPct;
 
   let entry = p.entry ? Number(p.entry) : price;
-  let target = p.target ? Number(p.target) : 0;
-  let stopLoss = p.stop_loss ? Number(p.stop_loss) : 0;
+  
+  // Calculate dynamic timeframe-calibrated target and stop loss move
+  const targetMove = Math.min(
+    Math.max(candleRange * tfConfig.mult, entry * tfConfig.minPct),
+    entry * tfConfig.maxPct
+  );
+  const slMove = Math.max(candleRange * tfConfig.slMult, entry * tfConfig.minSlPct);
+
+  let target = 0;
+  let stopLoss = 0;
 
   if (isBullish) {
-    if (!target) target = entry + Math.max(candleRange * 2.0, entry * 0.035);
-    if (!stopLoss) stopLoss = entry - Math.max(candleRange * 1.0, entry * 0.018);
+    target = entry + targetMove;
+    stopLoss = entry - slMove;
   } else if (isBearish) {
-    if (!target) target = entry - Math.max(candleRange * 2.0, entry * 0.035);
-    if (!stopLoss) stopLoss = entry + Math.max(candleRange * 1.0, entry * 0.018);
+    target = entry - targetMove;
+    stopLoss = entry + slMove;
   } else {
-    if (!target) target = entry + candleRange * 1.5;
-    if (!stopLoss) stopLoss = entry - candleRange * 1.0;
+    target = entry + targetMove * 0.7;
+    stopLoss = entry - slMove * 0.7;
   }
 
   const targetPoints = Math.abs(target - entry);
-  const targetPct = entry > 0 ? ((targetPoints / entry) * 100).toFixed(1) : "0.0";
+  const targetPct = entry > 0 ? ((targetPoints / entry) * 100).toFixed(2) : "0.00";
   const slPoints = Math.abs(entry - stopLoss);
-  const slPct = entry > 0 ? ((slPoints / entry) * 100).toFixed(1) : "0.0";
+  const slPct = entry > 0 ? ((slPoints / entry) * 100).toFixed(2) : "0.00";
   const rr = slPoints > 0 ? (targetPoints / slPoints).toFixed(1) : "2.0";
 
   return {
     ...p,
     recommendation: isBullish ? "BUY" : isBearish ? "SELL" : (p.recommendation || "WATCH"),
+    target_horizon: tfConfig.horizon,
+    horizon_short: tfConfig.shortName,
+    timeframe: timeframe,
     entry: Number(entry.toFixed(2)),
     target: Number(target.toFixed(2)),
     stop_loss: Number(stopLoss.toFixed(2)),
@@ -196,7 +274,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       const response = await api.get(`/api/stocks/${symbol}/history?timeframe=${timeframe}`);
       const rawData = response.data;
       if (rawData && rawData.candles) {
-        const enrichedPatterns = (rawData.detected_patterns || []).map(p => enrichPatternWithLevels(p, rawData.candles));
+        const enrichedPatterns = (rawData.detected_patterns || []).map(p => enrichPatternWithLevels(p, rawData.candles, timeframe));
         setData({
           ...rawData,
           detected_patterns: enrichedPatterns
@@ -261,7 +339,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       },
       timeScale: {
         borderColor: "#1F2937",
-        timeVisible: timeframe === "1m" || timeframe === "5m",
+        timeVisible: ["1m", "5m", "15m", "60m", "1h"].includes(timeframe),
         secondsVisible: false,
       },
       rightPriceScale: {
@@ -380,7 +458,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
           lineWidth: 2,
           lineStyle: 2, // Dashed
           axisLabelVisible: true,
-          title: `▶ ${isBuy ? 'BUY HERE' : 'SELL HERE'}: ${currencySym}${activeP.entry}`,
+          title: `▶ ${isBuy ? 'BUY HERE' : 'SELL HERE'} (${timeframe}): ${currencySym}${activeP.entry}`,
         });
 
         // Target line (green for BUY, red for SELL)
@@ -390,7 +468,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
           lineWidth: 2,
           lineStyle: 2,
           axisLabelVisible: true,
-          title: `🎯 EXIT TARGET: ${currencySym}${activeP.target} (${isBuy ? '+' : '-'}${activeP.target_points} pts)`,
+          title: `🎯 ${activeP.target_horizon || 'EXIT TARGET'}: ${currencySym}${activeP.target} (${isBuy ? '+' : '-'}${activeP.target_points} pts)`,
         });
 
         // Stop Loss line (red for BUY, green for SELL)
@@ -566,11 +644,12 @@ const ChartContainer = ({ symbol, setSymbol }) => {
 
   const currencySymbol = isIndianSymbol(symbol) ? "₹" : "$";
   const latestPrice = data?.candles?.[data.candles.length - 1]?.close || 100;
+  const tfConfig = TIMEFRAME_TARGET_HORIZONS[timeframe] || TIMEFRAME_TARGET_HORIZONS["1D"];
   const isAiBuy = analysis?.signal === "BUY";
   const isAiSell = analysis?.signal === "SELL";
-  const aiMovePct = isAiBuy ? 0.035 : isAiSell ? -0.035 : 0.015;
+  const aiMovePct = isAiBuy ? tfConfig.minPct * 1.5 : isAiSell ? -tfConfig.minPct * 1.5 : tfConfig.minPct * 0.8;
   const aiTarget = Number((latestPrice * (1 + aiMovePct)).toFixed(2));
-  const aiStopLoss = Number((latestPrice * (1 + (isAiBuy ? -0.018 : isAiSell ? 0.018 : -0.012))).toFixed(2));
+  const aiStopLoss = Number((latestPrice * (1 + (isAiBuy ? -tfConfig.minSlPct * 1.2 : isAiSell ? tfConfig.minSlPct * 1.2 : -tfConfig.minSlPct))).toFixed(2));
   const aiTargetPoints = Number(Math.abs(aiTarget - latestPrice).toFixed(2));
 
   // Current active pattern
@@ -639,19 +718,28 @@ const ChartContainer = ({ symbol, setSymbol }) => {
             </form>
           </div>
 
-          {/* Timeframes Selector */}
+          {/* Timeframes Selector with Scalp/Intraday/Swing Target Hints */}
           <div className="bg-darkCard p-1 rounded-xl border border-gray-850 flex">
-            {["1m", "5m", "1D", "1W"].map((tf) => (
+            {[
+              { id: "1m", label: "1m", sub: "5m tgt" },
+              { id: "5m", label: "5m", sub: "15m tgt" },
+              { id: "15m", label: "15m", sub: "30m tgt" },
+              { id: "60m", label: "60m", sub: "1h tgt" },
+              { id: "1D", label: "1D", sub: "Swing" },
+              { id: "1W", label: "1W", sub: "Pos." }
+            ].map(({ id, label, sub }) => (
               <button
-                key={tf}
-                onClick={() => setTimeframe(tf)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  timeframe === tf 
-                    ? "bg-indigo-600 text-white" 
-                    : "text-gray-400 hover:text-gray-200"
+                key={id}
+                onClick={() => setTimeframe(id)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex flex-col items-center ${
+                  timeframe === id 
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30" 
+                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
                 }`}
+                title={`${label} Candle → ${sub}`}
               >
-                {tf}
+                <span>{label}</span>
+                <span className={`text-[8px] font-normal leading-none mt-0.5 ${timeframe === id ? "text-indigo-200" : "text-gray-500"}`}>{sub}</span>
               </button>
             ))}
           </div>
@@ -826,6 +914,16 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                       <span className="text-[9px] font-mono text-gray-400">{activePattern.time}</span>
                     </div>
 
+                    <div className="flex items-center gap-1.5 mt-1 text-[9px] text-gray-400 font-medium">
+                      <span className="px-1.5 py-0.5 rounded bg-gray-900 border border-gray-800 text-indigo-300 font-bold uppercase">
+                        {timeframe} Candle
+                      </span>
+                      <span>➔</span>
+                      <span className="text-amber-400 font-bold">
+                        {activePattern.target_horizon}
+                      </span>
+                    </div>
+
                     <div className="mt-2 text-xs font-bold text-white flex items-center justify-between">
                       <span>
                         {activePattern.recommendation === "BUY" ? (
@@ -841,7 +939,9 @@ const ChartContainer = ({ symbol, setSymbol }) => {
 
                     <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-800 text-[10px]">
                       <div>
-                        <span className="text-gray-400 text-[9px] font-bold uppercase block">EXIT TARGET</span>
+                        <span className="text-gray-400 text-[9px] font-bold uppercase block">
+                          EXIT TARGET ({activePattern.horizon_short || 'Target'})
+                        </span>
                         <span className={`font-mono font-bold block ${activePattern.recommendation === 'BUY' ? 'text-emerald-400' : activePattern.recommendation === 'SELL' ? 'text-rose-400' : 'text-amber-400'}`}>
                           {currencySymbol}{activePattern.target?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
@@ -1045,16 +1145,21 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                               </span>
                             </div>
 
-                            {/* Target */}
-                            <div className="flex justify-between items-center">
-                              <span className={`text-[10px] font-bold uppercase flex items-center gap-1 ${
-                                isBuy ? 'text-emerald-400' : 'text-rose-400'
-                              }`}>
-                                <span className={`w-2 h-0.5 inline-block rounded ${
-                                  isBuy ? 'bg-emerald-400' : 'bg-rose-400'
-                                }`}></span>
-                                Exit Target
-                              </span>
+                            {/* Target with Timeframe-Calibrated Horizon */}
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <span className={`text-[10px] font-bold uppercase flex items-center gap-1 ${
+                                  isBuy ? 'text-emerald-400' : 'text-rose-400'
+                                }`}>
+                                  <span className={`w-2 h-0.5 inline-block rounded ${
+                                    isBuy ? 'bg-emerald-400' : 'bg-rose-400'
+                                  }`}></span>
+                                  Exit Target
+                                </span>
+                                <span className="text-[8px] text-amber-400/90 font-medium block ml-3">
+                                  {p.target_horizon || 'Target'}
+                                </span>
+                              </div>
                               <div className="text-right">
                                 <span className="text-white font-bold font-mono text-[11px] block">
                                   {currencySymbol}{p.target?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
