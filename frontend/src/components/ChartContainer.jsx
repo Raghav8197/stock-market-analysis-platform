@@ -45,6 +45,69 @@ import {
   Loader2
 } from "lucide-react";
 
+const enrichPatternWithLevels = (p, candles) => {
+  const name = p.pattern || "Pattern";
+  const isBullish = 
+    p.recommendation === "BUY" || 
+    p.position === "belowBar" || 
+    name.toLowerCase().includes("bottom") || 
+    name.toLowerCase().includes("hammer") || 
+    name.toLowerCase().includes("morning") || 
+    name.toLowerCase().includes("bullish");
+  
+  const isBearish = 
+    p.recommendation === "SELL" || 
+    p.position === "aboveBar" || 
+    name.toLowerCase().includes("top") || 
+    name.toLowerCase().includes("shooting") || 
+    name.toLowerCase().includes("evening") || 
+    name.toLowerCase().includes("bearish") || 
+    name.toLowerCase().includes("head");
+
+  const lastCandle = candles && candles.length > 0 ? candles[candles.length - 1] : null;
+  const price = Number(p.price) || (lastCandle ? Number(lastCandle.close) : 100);
+  
+  const matchedCandle = candles?.find(c => c.time === p.time) || lastCandle;
+  const candleRange = matchedCandle && matchedCandle.high > matchedCandle.low 
+    ? (matchedCandle.high - matchedCandle.low) 
+    : price * 0.025;
+
+  let entry = p.entry ? Number(p.entry) : price;
+  let target = p.target ? Number(p.target) : 0;
+  let stopLoss = p.stop_loss ? Number(p.stop_loss) : 0;
+
+  if (isBullish) {
+    if (!target) target = entry + Math.max(candleRange * 2.0, entry * 0.035);
+    if (!stopLoss) stopLoss = entry - Math.max(candleRange * 1.0, entry * 0.018);
+  } else if (isBearish) {
+    if (!target) target = entry - Math.max(candleRange * 2.0, entry * 0.035);
+    if (!stopLoss) stopLoss = entry + Math.max(candleRange * 1.0, entry * 0.018);
+  } else {
+    if (!target) target = entry + candleRange * 1.5;
+    if (!stopLoss) stopLoss = entry - candleRange * 1.0;
+  }
+
+  const targetPoints = Math.abs(target - entry);
+  const targetPct = entry > 0 ? ((targetPoints / entry) * 100).toFixed(1) : "0.0";
+  const slPoints = Math.abs(entry - stopLoss);
+  const slPct = entry > 0 ? ((slPoints / entry) * 100).toFixed(1) : "0.0";
+  const rr = slPoints > 0 ? (targetPoints / slPoints).toFixed(1) : "2.0";
+
+  return {
+    ...p,
+    recommendation: isBullish ? "BUY" : isBearish ? "SELL" : (p.recommendation || "WATCH"),
+    entry: Number(entry.toFixed(2)),
+    target: Number(target.toFixed(2)),
+    stop_loss: Number(stopLoss.toFixed(2)),
+    target_points: Number(targetPoints.toFixed(2)),
+    target_pct: targetPct,
+    sl_points: Number(slPoints.toFixed(2)),
+    sl_pct: slPct,
+    risk_reward: rr,
+    confidence: p.confidence || (name.includes("Bottom") || name.includes("Top") || name.includes("Head") ? "HIGH" : "MEDIUM")
+  };
+};
+
 const ChartContainer = ({ symbol, setSymbol }) => {
   const chartContainerRef = useRef(null);
   const rsiContainerRef = useRef(null);
@@ -125,12 +188,23 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   // Fetch Chart Data
   const [analysis, setAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [selectedPatternIndex, setSelectedPatternIndex] = useState(null);
 
   const fetchChartData = async () => {
     setLoading(true);
     try {
       const response = await api.get(`/api/stocks/${symbol}/history?timeframe=${timeframe}`);
-      setData(response.data);
+      const rawData = response.data;
+      if (rawData && rawData.candles) {
+        const enrichedPatterns = (rawData.detected_patterns || []).map(p => enrichPatternWithLevels(p, rawData.candles));
+        setData({
+          ...rawData,
+          detected_patterns: enrichedPatterns
+        });
+      } else {
+        setData(rawData);
+      }
+      setSelectedPatternIndex(null);
     } catch (error) {
       console.error("Failed to load historical data:", error);
       alert("Symbol not found or data retrieval failed.");
@@ -290,42 +364,45 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       }));
       createSeriesMarkers(candleSeries, markers);
 
-      // Draw Entry / Target / Stop Loss price lines for recent patterns
-      const recentPatterns = data.detected_patterns.slice(-3); // show last 3 patterns max
+      // Draw Entry / Target / Stop Loss price lines for selected or latest pattern
+      const currencySym = isIndianSymbol(symbol) ? "₹" : "$";
+      const activeP = (selectedPatternIndex !== null && data.detected_patterns[selectedPatternIndex])
+        ? data.detected_patterns[selectedPatternIndex]
+        : data.detected_patterns[data.detected_patterns.length - 1];
 
-      recentPatterns.forEach((p, idx) => {
-        if (p.entry && p.target && p.stop_loss) {
-          // Entry line (yellow/gold dashed)
-          candleSeries.createPriceLine({
-            price: p.entry,
-            color: '#FBBF24',
-            lineWidth: 2,
-            lineStyle: 2, // Dashed
-            axisLabelVisible: true,
-            title: `▶ ENTRY ${p.pattern}`,
-          });
+      if (activeP && activeP.entry && activeP.target && activeP.stop_loss) {
+        const isBuy = activeP.recommendation === 'BUY';
 
-          // Target line (green for BUY, red for SELL)
-          candleSeries.createPriceLine({
-            price: p.target,
-            color: p.recommendation === 'BUY' ? '#10B981' : '#EF4444',
-            lineWidth: 2,
-            lineStyle: 2,
-            axisLabelVisible: true,
-            title: `🎯 TARGET`,
-          });
+        // Entry line (yellow/gold dashed)
+        candleSeries.createPriceLine({
+          price: activeP.entry,
+          color: '#FBBF24',
+          lineWidth: 2,
+          lineStyle: 2, // Dashed
+          axisLabelVisible: true,
+          title: `▶ ${isBuy ? 'BUY HERE' : 'SELL HERE'}: ${currencySym}${activeP.entry}`,
+        });
 
-          // Stop Loss line (red for BUY, green for SELL)
-          candleSeries.createPriceLine({
-            price: p.stop_loss,
-            color: p.recommendation === 'BUY' ? '#EF4444' : '#10B981',
-            lineWidth: 2,
-            lineStyle: 2,
-            axisLabelVisible: true,
-            title: `⛔ STOP LOSS`,
-          });
-        }
-      });
+        // Target line (green for BUY, red for SELL)
+        candleSeries.createPriceLine({
+          price: activeP.target,
+          color: isBuy ? '#10B981' : '#EF4444',
+          lineWidth: 2,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: `🎯 EXIT TARGET: ${currencySym}${activeP.target} (${isBuy ? '+' : '-'}${activeP.target_points} pts)`,
+        });
+
+        // Stop Loss line (red for BUY, green for SELL)
+        candleSeries.createPriceLine({
+          price: activeP.stop_loss,
+          color: isBuy ? '#EF4444' : '#10B981',
+          lineWidth: 2,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: `⛔ STOP LOSS: ${currencySym}${activeP.stop_loss} (${isBuy ? '-' : '+'}${activeP.sl_points} pts)`,
+        });
+      }
     }
 
     // 2. Setup Secondary RSI Chart (if active)
@@ -478,7 +555,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       rsiChartRef.current = null;
       macdChartRef.current = null;
     };
-  }, [data, showSMA20, showEMA50, showEMA200, showBB, showRSI, showMACD]);
+  }, [data, showSMA20, showEMA50, showEMA200, showBB, showRSI, showMACD, selectedPatternIndex]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -486,6 +563,20 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       setSymbol(searchInput.trim().toUpperCase());
     }
   };
+
+  const currencySymbol = isIndianSymbol(symbol) ? "₹" : "$";
+  const latestPrice = data?.candles?.[data.candles.length - 1]?.close || 100;
+  const isAiBuy = analysis?.signal === "BUY";
+  const isAiSell = analysis?.signal === "SELL";
+  const aiMovePct = isAiBuy ? 0.035 : isAiSell ? -0.035 : 0.015;
+  const aiTarget = Number((latestPrice * (1 + aiMovePct)).toFixed(2));
+  const aiStopLoss = Number((latestPrice * (1 + (isAiBuy ? -0.018 : isAiSell ? 0.018 : -0.012))).toFixed(2));
+  const aiTargetPoints = Number(Math.abs(aiTarget - latestPrice).toFixed(2));
+
+  // Current active pattern
+  const activePattern = (selectedPatternIndex !== null && data?.detected_patterns?.[selectedPatternIndex])
+    ? data.detected_patterns[selectedPatternIndex]
+    : data?.detected_patterns?.[data.detected_patterns.length - 1];
 
   return (
     <div className="space-y-6">
@@ -659,32 +750,46 @@ const ChartContainer = ({ symbol, setSymbol }) => {
           </div>
 
           {/* Active Pattern Setups Banner */}
-          {data?.detected_patterns?.filter(p => p.entry && p.target).length > 0 && (
-            <div className="bg-gradient-to-r from-indigo-950/40 via-darkCard to-indigo-950/40 border border-indigo-500/10 rounded-xl p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Activity className="w-4 h-4 text-indigo-400" />
-                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Active Pattern Setups on Chart</span>
+          {data?.detected_patterns && data.detected_patterns.length > 0 && (
+            <div className="bg-gradient-to-r from-indigo-950/40 via-darkCard to-indigo-950/40 border border-indigo-500/20 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-indigo-400 animate-pulse" />
+                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Active Pattern Signals on Chart</span>
+                </div>
+                <span className="text-[9px] text-gray-400">Click any pattern to focus its price lines</span>
               </div>
               <div className="flex flex-wrap gap-2">
-                {data.detected_patterns.filter(p => p.entry && p.target).slice(-5).map((p, idx) => (
-                  <div key={idx} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold border ${
-                    p.recommendation === 'BUY' 
-                      ? 'bg-emerald-500/5 text-emerald-400 border-emerald-500/15' 
-                      : p.recommendation === 'SELL'
-                      ? 'bg-rose-500/5 text-rose-400 border-rose-500/15'
-                      : 'bg-amber-500/5 text-amber-400 border-amber-500/15'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${
-                      p.recommendation === 'BUY' ? 'bg-emerald-400' : 
-                      p.recommendation === 'SELL' ? 'bg-rose-400' : 'bg-amber-400'
-                    }`}></span>
-                    <span>{p.pattern}</span>
-                    <span className="text-gray-500">|</span>
-                    <span>{p.recommendation}</span>
-                    <span className="text-gray-500">→</span>
-                    <span className="font-mono">🎯 {p.target?.toFixed(2)}</span>
-                  </div>
-                ))}
+                {data.detected_patterns.slice(-5).map((p, idx) => {
+                  const globalIdx = data.detected_patterns.length - 5 + idx;
+                  const isSelected = selectedPatternIndex === globalIdx || (selectedPatternIndex === null && idx === Math.min(4, data.detected_patterns.length - 1));
+                  const isBuy = p.recommendation === 'BUY';
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSelectedPatternIndex(globalIdx >= 0 ? globalIdx : idx)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
+                        isSelected ? "ring-2 ring-indigo-500 shadow-lg scale-105 " : ""
+                      }${
+                        isBuy 
+                          ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20' 
+                          : p.recommendation === 'SELL'
+                          ? 'bg-rose-500/10 text-rose-300 border-rose-500/30 hover:bg-rose-500/20'
+                          : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${
+                        isBuy ? 'bg-emerald-400' : p.recommendation === 'SELL' ? 'bg-rose-400' : 'bg-amber-400'
+                      }`}></span>
+                      <span>{p.pattern}</span>
+                      <span className="text-gray-500 font-normal">|</span>
+                      <span className="uppercase">{p.recommendation}</span>
+                      <span className="text-gray-500 font-normal">→</span>
+                      <span className="font-mono">🎯 {currencySymbol}{p.target?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({isBuy ? '+' : '-'}{p.target_points} pts)</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -699,12 +804,74 @@ const ChartContainer = ({ symbol, setSymbol }) => {
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Left Column: Charts */}
             <div className="lg:col-span-3 space-y-4">
-              {/* Main Price & Indicators Canvas */}
-              <div 
-                ref={chartContainerRef} 
-                className="w-full relative overflow-hidden rounded-xl border border-gray-850/50" 
-                style={{ height: "400px" }}
-              />
+              {/* Main Price & Indicators Canvas with Live Pattern Callout HUD */}
+              <div className="relative w-full overflow-hidden rounded-xl border border-gray-850/50">
+                <div 
+                  ref={chartContainerRef} 
+                  className="w-full" 
+                  style={{ height: "400px" }}
+                />
+
+                {/* Floating Live Pattern HUD Overlay on the chart canvas */}
+                {activePattern && (
+                  <div className="absolute top-3 left-3 z-10 bg-gray-950/90 backdrop-blur-md border border-indigo-500/30 rounded-xl p-3 shadow-2xl max-w-sm pointer-events-auto transition-all">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-sm" style={{
+                        color: activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444"),
+                        backgroundColor: `${activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444")}15`,
+                        borderColor: `${activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444")}35`
+                      }}>
+                        ⚡ {activePattern.pattern} ({activePattern.recommendation})
+                      </span>
+                      <span className="text-[9px] font-mono text-gray-400">{activePattern.time}</span>
+                    </div>
+
+                    <div className="mt-2 text-xs font-bold text-white flex items-center justify-between">
+                      <span>
+                        {activePattern.recommendation === "BUY" ? (
+                          <span className="text-emerald-400 font-extrabold">▶ BUY HERE:</span>
+                        ) : activePattern.recommendation === "SELL" ? (
+                          <span className="text-rose-400 font-extrabold">▶ SELL HERE:</span>
+                        ) : (
+                          <span className="text-amber-400 font-extrabold">▶ WATCH / ENTRY:</span>
+                        )}
+                        {" "}{currencySymbol}{activePattern.entry?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-800 text-[10px]">
+                      <div>
+                        <span className="text-gray-400 text-[9px] font-bold uppercase block">EXIT TARGET</span>
+                        <span className={`font-mono font-bold block ${activePattern.recommendation === 'BUY' ? 'text-emerald-400' : activePattern.recommendation === 'SELL' ? 'text-rose-400' : 'text-amber-400'}`}>
+                          {currencySymbol}{activePattern.target?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-[9px] font-mono text-gray-500 block">
+                          {activePattern.recommendation === 'BUY' ? `+${activePattern.target_points} pts (+${activePattern.target_pct}%)` : activePattern.recommendation === 'SELL' ? `-${activePattern.target_points} pts (-${activePattern.target_pct}%)` : `±${activePattern.target_points} pts`}
+                        </span>
+                      </div>
+                      <div className="border-l border-gray-850 pl-2">
+                        <span className="text-gray-400 text-[9px] font-bold uppercase block">STOP LOSS</span>
+                        <span className="font-mono font-bold text-rose-400 block">
+                          {currencySymbol}{activePattern.stop_loss?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-[9px] font-mono text-gray-500 block">
+                          {activePattern.recommendation === 'BUY' ? `-${activePattern.sl_points} pts` : `+${activePattern.sl_points} pts`}
+                        </span>
+                      </div>
+                      <div className="border-l border-gray-850 pl-2">
+                        <span className="text-gray-400 text-[9px] font-bold uppercase block">RISK:REWARD</span>
+                        <span className="font-mono font-bold text-indigo-400 text-xs block">
+                          1:{activePattern.risk_reward}
+                        </span>
+                        <span className="text-[8px] font-bold text-gray-500 uppercase block">
+                          {activePattern.confidence}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Synchronized RSI Panel */}
               {showRSI && (
                 <div className="space-y-1">
@@ -768,6 +935,28 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                     />
                   </div>
 
+                  {/* Projected AI Targets & Risk Level */}
+                  <div className="pt-2 border-t border-gray-900/60 grid grid-cols-2 gap-2 text-[10px]">
+                    <div className="bg-gray-900/60 p-2 rounded-lg border border-gray-850">
+                      <span className="text-gray-400 block text-[9px] font-bold uppercase">Expected Target</span>
+                      <span className={`font-mono font-bold text-xs ${isAiBuy ? 'text-emerald-400' : isAiSell ? 'text-rose-400' : 'text-amber-400'}`}>
+                        {currencySymbol}{aiTarget?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-[9px] text-gray-500 block">
+                        {isAiBuy ? `+${aiTargetPoints} pts (+${(Math.abs(aiMovePct) * 100).toFixed(1)}%)` : isAiSell ? `-${aiTargetPoints} pts (-${(Math.abs(aiMovePct) * 100).toFixed(1)}%)` : 'Consolidation Target'}
+                      </span>
+                    </div>
+                    <div className="bg-gray-900/60 p-2 rounded-lg border border-gray-850">
+                      <span className="text-gray-400 block text-[9px] font-bold uppercase">Stop Loss</span>
+                      <span className="font-mono font-bold text-xs text-rose-400">
+                        {currencySymbol}{aiStopLoss?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-[9px] text-gray-500 block">
+                        Risk Invalidation
+                      </span>
+                    </div>
+                  </div>
+
                   {/* Reasons list (scrollable if too long) */}
                   <div className="space-y-1 max-h-20 overflow-y-auto pr-1">
                     <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block">Key Analysis Insights</span>
@@ -796,36 +985,52 @@ const ChartContainer = ({ symbol, setSymbol }) => {
               </h4>
               <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
                 {data?.detected_patterns && data.detected_patterns.length > 0 ? (
-                  (() => {
-                    const currencySymbol = isIndianSymbol(symbol) ? "₹" : "$";
-                    return [...data.detected_patterns].reverse().map((p, idx) => (
-                      <div key={idx} className="bg-darkCard p-3 border border-gray-850 rounded-xl space-y-1 hover:border-indigo-650 transition-colors">
+                  [...data.detected_patterns].reverse().map((p, idx) => {
+                    const originalIdx = data.detected_patterns.length - 1 - idx;
+                    const isSelected = selectedPatternIndex === originalIdx || (selectedPatternIndex === null && idx === 0);
+                    const isBuy = p.recommendation === "BUY";
+                    const isSell = p.recommendation === "SELL";
+
+                    return (
+                      <div 
+                        key={idx} 
+                        onClick={() => setSelectedPatternIndex(originalIdx)}
+                        className={`bg-darkCard p-3 border rounded-xl space-y-1 transition-all cursor-pointer ${
+                          isSelected 
+                            ? "border-indigo-500 ring-1 ring-indigo-500/50 shadow-lg bg-indigo-950/20" 
+                            : "border-gray-850 hover:border-gray-700"
+                        }`}
+                      >
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border" style={{
-                            color: p.color,
-                            backgroundColor: `${p.color}15`,
-                            borderColor: `${p.color}25`
+                            color: p.color || (isBuy ? "#10B981" : "#EF4444"),
+                            backgroundColor: `${p.color || (isBuy ? "#10B981" : "#EF4444")}15`,
+                            borderColor: `${p.color || (isBuy ? "#10B981" : "#EF4444")}25`
                           }}>
-                            {p.pattern.replace("_", " ")}
+                            {p.pattern?.replace("_", " ")}
                           </span>
                           <span className="text-gray-500 font-mono text-[9px]">{p.time}</span>
                         </div>
+
                         <div className="flex justify-between items-baseline pt-1">
                           <span className="text-gray-400">Trigger Price:</span>
-                          <span className="text-white font-bold font-mono">{currencySymbol}{p.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <span className="text-white font-bold font-mono">{currencySymbol}{p.price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
+
+                        {/* Action Signal */}
                         {p.recommendation && (
                           <div className="flex justify-between items-center pt-1.5 border-t border-gray-900/50 mt-1.5">
                             <span className="text-[10px] text-gray-500 font-medium">Action Signal:</span>
                             <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                              p.recommendation === "BUY" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
-                              p.recommendation === "SELL" ? "bg-rose-500/10 text-rose-400 border border-rose-500/20" :
+                              isBuy ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                              isSell ? "bg-rose-500/10 text-rose-400 border border-rose-500/20" :
                               "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                             }`}>
                               {p.recommendation}
                             </span>
                           </div>
                         )}
+
                         {/* Entry / Target / Stop Loss Trading Levels */}
                         {p.entry && (
                           <div className="mt-2 space-y-1.5 pt-2 border-t border-gray-900/50">
@@ -833,58 +1038,65 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                             <div className="flex justify-between items-center">
                               <span className="text-[10px] text-amber-400 font-bold uppercase flex items-center gap-1">
                                 <span className="w-2 h-0.5 bg-amber-400 inline-block rounded"></span>
-                                Entry
+                                {isBuy ? "Buy Here (Entry)" : isSell ? "Sell Here (Entry)" : "Entry"}
                               </span>
                               <span className="text-white font-bold font-mono text-[11px]">
-                                {currencySymbol}{p.entry.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                {currencySymbol}{p.entry?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>
                             </div>
+
                             {/* Target */}
                             <div className="flex justify-between items-center">
                               <span className={`text-[10px] font-bold uppercase flex items-center gap-1 ${
-                                p.recommendation === 'BUY' ? 'text-emerald-400' : 'text-rose-400'
+                                isBuy ? 'text-emerald-400' : 'text-rose-400'
                               }`}>
                                 <span className={`w-2 h-0.5 inline-block rounded ${
-                                  p.recommendation === 'BUY' ? 'bg-emerald-400' : 'bg-rose-400'
+                                  isBuy ? 'bg-emerald-400' : 'bg-rose-400'
                                 }`}></span>
-                                Target
+                                Exit Target
                               </span>
-                              <span className="text-white font-bold font-mono text-[11px]">
-                                {currencySymbol}{p.target.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
+                              <div className="text-right">
+                                <span className="text-white font-bold font-mono text-[11px] block">
+                                  {currencySymbol}{p.target?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                                <span className={`text-[9px] font-mono font-bold ${isBuy ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  {isBuy ? `+${p.target_points} pts` : `-${p.target_points} pts`} ({isBuy ? `+${p.target_pct}%` : `-${p.target_pct}%`})
+                                </span>
+                              </div>
                             </div>
+
                             {/* Stop Loss */}
                             <div className="flex justify-between items-center">
                               <span className={`text-[10px] font-bold uppercase flex items-center gap-1 ${
-                                p.recommendation === 'BUY' ? 'text-rose-400' : 'text-emerald-400'
+                                isBuy ? 'text-rose-400' : 'text-emerald-400'
                               }`}>
                                 <span className={`w-2 h-0.5 inline-block rounded ${
-                                  p.recommendation === 'BUY' ? 'bg-rose-400' : 'bg-emerald-400'
+                                  isBuy ? 'bg-rose-400' : 'bg-emerald-400'
                                 }`}></span>
                                 Stop Loss
                               </span>
-                              <span className="text-white font-bold font-mono text-[11px]">
-                                {currencySymbol}{p.stop_loss.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              <div className="text-right">
+                                <span className="text-white font-bold font-mono text-[11px] block">
+                                  {currencySymbol}{p.stop_loss?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                                <span className="text-[9px] font-mono text-gray-500">
+                                  {isBuy ? `-${p.sl_points} pts` : `+${p.sl_points} pts`}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Risk:Reward Ratio */}
+                            <div className="flex justify-between items-center pt-1.5 border-t border-gray-900/30">
+                              <span className="text-[9px] text-gray-500 font-bold uppercase">Risk:Reward</span>
+                              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded ${
+                                parseFloat(p.risk_reward) >= 2 ? 'bg-emerald-500/10 text-emerald-400' :
+                                parseFloat(p.risk_reward) >= 1 ? 'bg-amber-500/10 text-amber-400' :
+                                'bg-rose-500/10 text-rose-400'
+                              }`}>
+                                1:{p.risk_reward}
                               </span>
                             </div>
-                            {/* Risk:Reward Ratio */}
-                            {(() => {
-                              const risk = Math.abs(p.entry - p.stop_loss);
-                              const reward = Math.abs(p.target - p.entry);
-                              const rr = risk > 0 ? (reward / risk).toFixed(1) : '∞';
-                              return (
-                                <div className="flex justify-between items-center pt-1.5 border-t border-gray-900/30">
-                                  <span className="text-[9px] text-gray-500 font-bold uppercase">Risk:Reward</span>
-                                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded ${
-                                    parseFloat(rr) >= 2 ? 'bg-emerald-500/10 text-emerald-400' :
-                                    parseFloat(rr) >= 1 ? 'bg-amber-500/10 text-amber-400' :
-                                    'bg-rose-500/10 text-rose-400'
-                                  }`}>
-                                    1:{rr}
-                                  </span>
-                                </div>
-                              );
-                            })()}
+
                             {/* Confidence Badge */}
                             {p.confidence && (
                               <div className="flex justify-between items-center">
@@ -901,8 +1113,8 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                           </div>
                         )}
                       </div>
-                    ));
-                  })()
+                    );
+                  })
                 ) : (
                   <div className="text-center py-10 text-gray-500 italic">
                     No patterns detected in the historical timeframe.

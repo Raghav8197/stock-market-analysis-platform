@@ -11,9 +11,21 @@ import {
   Loader2
 } from "lucide-react";
 
+const isIndianSymbol = (symbol) => {
+  if (!symbol) return false;
+  const s = symbol.toUpperCase();
+  return (
+    ["NIFTY", "BANKNIFTY", "GIFTNIFTY", "SENSEX", "^NSEI", "^NSEBANK", "GIFTY=F", "^BSESN"].includes(s) ||
+    s.endsWith(".NS") ||
+    s.endsWith(".BO") ||
+    ["RELIANCE", "TCS", "INFY", "HDFCBANK"].includes(s)
+  );
+};
+
 const AISignals = ({ symbol }) => {
   const { user } = useAuth();
   const [analysis, setAnalysis] = useState(null);
+  const [currentPrice, setCurrentPrice] = useState(null);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [logsLoading, setLogsLoading] = useState(false);
@@ -22,6 +34,17 @@ const AISignals = ({ symbol }) => {
   const [estimators, setEstimators] = useState(50);
   const [maxDepth, setMaxDepth] = useState(5);
   const [horizon, setHorizon] = useState(3);
+
+  const fetchSummary = async () => {
+    try {
+      const res = await api.get(`/api/stocks/${symbol}/summary`);
+      if (res.data?.current_price) {
+        setCurrentPrice(res.data.current_price);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const fetchAnalysis = async (customParams = {}) => {
     setLoading(true);
@@ -59,6 +82,7 @@ const AISignals = ({ symbol }) => {
   useEffect(() => {
     // Reset to defaults and trigger default fetch on symbol/user change
     fetchAnalysis({ estimators: 50, maxDepth: 5, horizon: 3 });
+    fetchSummary();
     setEstimators(50);
     setMaxDepth(5);
     setHorizon(3);
@@ -122,6 +146,30 @@ const AISignals = ({ symbol }) => {
                   />
                 </div>
               </div>
+
+              {/* Projected AI Targets */}
+              {currentPrice && (
+                <div className="mt-5 pt-3 border-t border-gray-800/80 grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-gray-900/60 p-2.5 rounded-xl border border-gray-850">
+                    <span className="text-[10px] text-gray-400 font-bold uppercase block">Expected Target</span>
+                    <span className={`font-mono font-bold text-sm ${analysis.signal === 'BUY' ? 'text-emerald-400' : analysis.signal === 'SELL' ? 'text-rose-400' : 'text-amber-400'}`}>
+                      {isIndianSymbol(symbol) ? "₹" : "$"}{(currentPrice * (1 + (analysis.signal === 'BUY' ? 0.035 : analysis.signal === 'SELL' ? -0.035 : 0.015))).toFixed(2)}
+                    </span>
+                    <span className="text-[10px] text-gray-500 block font-mono">
+                      {analysis.signal === 'BUY' ? `+${(currentPrice * 0.035).toFixed(2)} pts (+3.5%)` : analysis.signal === 'SELL' ? `-${(currentPrice * 0.035).toFixed(2)} pts (-3.5%)` : 'Consolidation Target'}
+                    </span>
+                  </div>
+                  <div className="bg-gray-900/60 p-2.5 rounded-xl border border-gray-850">
+                    <span className="text-[10px] text-gray-400 font-bold uppercase block">Stop Loss</span>
+                    <span className="font-mono font-bold text-sm text-rose-400">
+                      {isIndianSymbol(symbol) ? "₹" : "$"}{(currentPrice * (1 + (analysis.signal === 'BUY' ? -0.018 : analysis.signal === 'SELL' ? 0.018 : -0.012))).toFixed(2)}
+                    </span>
+                    <span className="text-[10px] text-gray-500 block font-mono">
+                      Risk Invalidation
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Model runtime stats */}
