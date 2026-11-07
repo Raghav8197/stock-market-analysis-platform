@@ -703,21 +703,27 @@ def analyze_and_package_stock(symbol: str, timeframe: str = "1D") -> Dict[str, A
             "outcome": result.get("outcome", "ACTIVE"),
             "bars_to_outcome": result.get("bars_to_outcome", 0),
             "pnl_points": result.get("pnl_points", 0.0),
+            "option_type": result.get("option_type", "CE" if result.get("is_bullish") else "PE"),
+            "fno_strike": result.get("fno_strike"),
+            "fno_instrument": result.get("fno_instrument"),
+            "max_holding_days": result.get("max_holding_days", "1–3 Days"),
             "pattern_points": mapped_points,
         })
                 
-    # Calculate strategy accuracy statistics
+    # Calculate strategy accuracy statistics strictly within F&O days holding window
     targets_hit_count = sum(1 for p in patterns_list if p.get("outcome") == "TARGET_HIT")
     sl_hit_count = sum(1 for p in patterns_list if p.get("outcome") == "SL_HIT")
+    time_expired_count = sum(1 for p in patterns_list if p.get("outcome") == "TIME_EXPIRED")
     active_count = sum(1 for p in patterns_list if p.get("outcome") == "ACTIVE")
     decided = targets_hit_count + sl_hit_count
     win_rate = round((targets_hit_count / decided) * 100, 1) if decided > 0 else 0.0
-    total_pnl = round(sum(p.get("pnl_points", 0.0) for p in patterns_list if p.get("outcome") in ["TARGET_HIT", "SL_HIT"]), 2)
+    total_pnl = round(sum(p.get("pnl_points", 0.0) for p in patterns_list if p.get("outcome") in ["TARGET_HIT", "SL_HIT", "TIME_EXPIRED"]), 2)
 
     accuracy_stats = {
         "total_patterns": len(patterns_list),
         "targets_hit": targets_hit_count,
         "sl_hit": sl_hit_count,
+        "time_expired": time_expired_count,
         "active_trades": active_count,
         "win_rate": win_rate,
         "net_pnl_points": total_pnl

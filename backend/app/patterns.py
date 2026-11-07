@@ -246,14 +246,42 @@ def scan_patterns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 TIMEFRAME_TARGET_HORIZONS = {
-    "1m": "5-Min Scalp Target",
-    "5m": "15-Min Momentum Target",
-    "15m": "30-Min Session Target",
-    "60m": "1-Hour Horizon Target",
-    "1h": "1-Hour Horizon Target",
-    "1D": "Swing Target (1-3 Days)",
-    "1W": "Positional Target (1-2 Weeks)",
+    "1m": "15-Min Scalp (F&O)",
+    "5m": "30-Min Momentum (F&O)",
+    "15m": "1-Hour Session (F&O)",
+    "60m": "Intraday F&O Target",
+    "1h": "Intraday F&O Target",
+    "1D": "1–3 Days F&O Target",
+    "1W": "Weekly Expiry Target",
 }
+
+MAX_HOLDING_BARS_MAP = {
+    "1m": 15,       # 15 mins scalp
+    "5m": 12,       # 60 mins scalp
+    "15m": 10,      # 2.5 hours session
+    "60m": 6,       # 1 day session
+    "1h": 6,        # 1 day session
+    "1D": 3,        # 1 to 3 days (Weekly/Monthly F&O contract)
+    "1W": 2,        # 2 weeks positional
+}
+
+def calculate_fno_strike(price: float) -> float:
+    """Calculate standard ATM strike price based on asset price magnitude."""
+    if price >= 20000:
+        step = 100
+    elif price >= 10000:
+        step = 50
+    elif price >= 2000:
+        step = 20
+    elif price >= 500:
+        step = 10
+    elif price >= 100:
+        step = 5
+    elif price >= 20:
+        step = 1
+    else:
+        step = 0.5
+    return round(round(price / step) * step, 2)
 
 def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     """Calculate Average True Range with robust fallbacks."""
@@ -276,14 +304,14 @@ def calculate_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
 
 def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List[Dict[str, Any]]:
     """
-    Detect confirmed high-probability patterns and compute actionable trading levels (entry, target, stop_loss)
-    scaled dynamically using ATR and moving averages to achieve an 80%+ prediction success rate.
-    Returns a list of dicts with pattern details, target horizons, and key chart points.
+    Detect confirmed high-probability F&O patterns with 1-3 day holding horizons,
+    option strike recommendations (CE/PE), and volatility-buffered targets.
     """
     results: List[Dict[str, Any]] = []
     close = df["Close"]
     n = len(df)
     horizon = TIMEFRAME_TARGET_HORIZONS.get(timeframe, "Target")
+    max_bars = MAX_HOLDING_BARS_MAP.get(timeframe, 3)
 
     is_intraday = timeframe in ["1m", "5m", "15m", "60m", "1h"]
     target_mult = 0.65 if is_intraday else 0.75
@@ -413,7 +441,6 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
         lower_shadow = min(o, c) - l
         upper_shadow = h - max(o, c)
 
-        # Bullish Confirmation: Healthy momentum, not overbought, pulling back or aligned with EMA structure
         bull_structure = (cur_ema20 >= cur_ema50 * 0.99 or c >= cur_ema20)
         bull_engulf = (
             c_prev < o_prev and c > o and o <= c_prev and c >= o_prev and
@@ -449,7 +476,6 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
                 ],
             })
 
-        # Bearish Confirmation: Rejection at resistance or falling structure, not oversold
         bear_structure = (cur_ema20 <= cur_ema50 * 1.01 and c <= cur_ema20)
         bear_engulf = (
             c_prev > o_prev and c < o and o >= c_prev and c <= o_prev and
@@ -485,7 +511,7 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
                 ],
             })
 
-    # Evaluate whether subsequent price bars hit target or stop loss
+    # Evaluate strictly within the F&O 1-3 DAYS / intraday expiry window
     for r in results:
         r["target_horizon"] = horizon
         bi = r["bar_index"]
@@ -494,63 +520,105 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
         sl = float(r["stop_loss"])
         is_bullish = r["is_bullish"]
 
+        # Calculate F&O Option Contract & Strike (CE / PE)
+        atm_strike = calculate_fno_strike(entry)
+        opt_type = "CE" if is_bullish else "PE"
+        strike_fmt = int(atm_strike) if atm_strike.is_integer() else atm_strike
+        fno_strike_str = f"{strike_fmt} {opt_type}"
+        fno_instrument = f"BUY {fno_strike_str} / {'BUY' if is_bullish else 'SHORT'} FUTURE"
+        holding_label = "1–3 Days" if timeframe in ["1D", "1W"] else ("15–30 Mins" if timeframe in ["1m", "5m"] else "1–2 Hours")
+
+        r["option_type"] = opt_type
+        r["fno_strike"] = fno_strike_str
+        r["fno_instrument"] = fno_instrument
+        r["max_holding_days"] = holding_label
+
         outcome = "ACTIVE"
         bars_to_outcome = 0
         pnl_points = 0.0
+        end_bar = min(bi + 1 + max_bars, n)
+
+        hit_target = False
+        hit_sl = False
 
         if is_bullish is True:
-            for j in range(bi + 1, n):
+            for j in range(bi + 1, end_bar):
                 hi = float(df["High"].iloc[j])
                 lo = float(df["Low"].iloc[j])
-                hit_target = hi >= target
-                hit_sl = lo <= sl
 
-                if hit_target and hit_sl:
-                    outcome = "TARGET_HIT" if float(df["Open"].iloc[j]) >= entry else "SL_HIT"
+                if hi >= target and lo <= sl:
+                    if float(df["Open"].iloc[j]) >= entry:
+                        hit_target = True
+                        bars_to_outcome = j - bi
+                        break
+                    else:
+                        hit_sl = True
+                        bars_to_outcome = j - bi
+                        break
+                elif hi >= target:
+                    hit_target = True
                     bars_to_outcome = j - bi
                     break
-                elif hit_target:
-                    outcome = "TARGET_HIT"
-                    bars_to_outcome = j - bi
-                    break
-                elif hit_sl:
-                    outcome = "SL_HIT"
+                elif lo <= sl:
+                    hit_sl = True
                     bars_to_outcome = j - bi
                     break
 
-            if outcome == "TARGET_HIT":
+            if hit_target:
+                outcome = "TARGET_HIT"
                 pnl_points = round(target - entry, 2)
-            elif outcome == "SL_HIT":
+            elif hit_sl:
+                outcome = "SL_HIT"
                 pnl_points = -round(entry - sl, 2)
+            elif end_bar < n:
+                # Reached Max F&O Holding Period (Day 3) -> Closed on time to prevent Theta decay
+                outcome = "TIME_EXPIRED"
+                bars_to_outcome = max_bars
+                exit_price = float(df["Close"].iloc[end_bar - 1])
+                pnl_points = round(exit_price - entry, 2)
             else:
+                outcome = "ACTIVE"
+                bars_to_outcome = n - 1 - bi
                 curr_c = float(df["Close"].iloc[-1])
                 pnl_points = round(curr_c - entry, 2)
 
         elif is_bullish is False:
-            for j in range(bi + 1, n):
+            for j in range(bi + 1, end_bar):
                 hi = float(df["High"].iloc[j])
                 lo = float(df["Low"].iloc[j])
-                hit_target = lo <= target
-                hit_sl = hi >= sl
 
-                if hit_target and hit_sl:
-                    outcome = "TARGET_HIT" if float(df["Open"].iloc[j]) <= entry else "SL_HIT"
+                if lo <= target and hi >= sl:
+                    if float(df["Open"].iloc[j]) <= entry:
+                        hit_target = True
+                        bars_to_outcome = j - bi
+                        break
+                    else:
+                        hit_sl = True
+                        bars_to_outcome = j - bi
+                        break
+                elif lo <= target:
+                    hit_target = True
                     bars_to_outcome = j - bi
                     break
-                elif hit_target:
-                    outcome = "TARGET_HIT"
-                    bars_to_outcome = j - bi
-                    break
-                elif hit_sl:
-                    outcome = "SL_HIT"
+                elif hi >= sl:
+                    hit_sl = True
                     bars_to_outcome = j - bi
                     break
 
-            if outcome == "TARGET_HIT":
+            if hit_target:
+                outcome = "TARGET_HIT"
                 pnl_points = round(entry - target, 2)
-            elif outcome == "SL_HIT":
+            elif hit_sl:
+                outcome = "SL_HIT"
                 pnl_points = -round(sl - entry, 2)
+            elif end_bar < n:
+                outcome = "TIME_EXPIRED"
+                bars_to_outcome = max_bars
+                exit_price = float(df["Close"].iloc[end_bar - 1])
+                pnl_points = round(entry - exit_price, 2)
             else:
+                outcome = "ACTIVE"
+                bars_to_outcome = n - 1 - bi
                 curr_c = float(df["Close"].iloc[-1])
                 pnl_points = round(entry - curr_c, 2)
         else:

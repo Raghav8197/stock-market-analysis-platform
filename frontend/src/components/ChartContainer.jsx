@@ -45,8 +45,21 @@ import {
   Loader2,
   CheckCircle2,
   AlertOctagon,
-  Trophy
+  Trophy,
+  Clock
 } from "lucide-react";
+
+const calculateFnoStrike = (price) => {
+  let step = 0.5;
+  if (price >= 20000) step = 100;
+  else if (price >= 10000) step = 50;
+  else if (price >= 2000) step = 20;
+  else if (price >= 500) step = 10;
+  else if (price >= 100) step = 5;
+  else if (price >= 20) step = 1;
+  const rounded = Math.round(price / step) * step;
+  return Number.isInteger(rounded) ? rounded : Number(rounded.toFixed(2));
+};
 
 const TIMEFRAME_TARGET_HORIZONS = {
   "1m": {
@@ -193,44 +206,79 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
   const slPct = entry > 0 ? ((slPoints / entry) * 100).toFixed(2) : "0.00";
   const rr = slPoints > 0 ? (targetPoints / slPoints).toFixed(1) : "2.0";
 
-  // Evaluate whether subsequent price bars hit target or stop loss
+  // Evaluate whether subsequent price bars hit target or stop loss strictly within 1-3 days F&O window
   let outcome = p.outcome || "ACTIVE";
   let pnlPoints = p.pnl_points !== undefined ? Number(p.pnl_points) : 0;
-  
+  let barsToOutcome = p.bars_to_outcome !== undefined ? Number(p.bars_to_outcome) : 0;
+
+  const maxBars = (timeframe === "1D" || timeframe === "1W") ? 3 : (timeframe === "60m" || timeframe === "1h") ? 6 : 12;
+
   if ((!p.outcome || p.outcome === "ACTIVE") && candles && candles.length > 0) {
     const patternIdx = candles.findIndex(c => String(c.time) === String(p.time));
     if (patternIdx !== -1 && patternIdx < candles.length - 1) {
+      const endBar = Math.min(patternIdx + 1 + maxBars, candles.length);
+      let hitTarget = false;
+      let hitSl = false;
+
       if (isBullish) {
-        for (let j = patternIdx + 1; j < candles.length; j++) {
+        for (let j = patternIdx + 1; j < endBar; j++) {
           const hi = Number(candles[j].high);
           const lo = Number(candles[j].low);
           if (hi >= target) {
-            outcome = "TARGET_HIT";
-            pnlPoints = Number((target - entry).toFixed(2));
+            hitTarget = true;
+            barsToOutcome = j - patternIdx;
             break;
           } else if (lo <= stopLoss) {
-            outcome = "SL_HIT";
-            pnlPoints = -Number((entry - stopLoss).toFixed(2));
+            hitSl = true;
+            barsToOutcome = j - patternIdx;
             break;
           }
         }
+        if (hitTarget) {
+          outcome = "TARGET_HIT";
+          pnlPoints = Number((target - entry).toFixed(2));
+        } else if (hitSl) {
+          outcome = "SL_HIT";
+          pnlPoints = -Number((entry - stopLoss).toFixed(2));
+        } else if (endBar < candles.length) {
+          outcome = "TIME_EXPIRED";
+          barsToOutcome = maxBars;
+          pnlPoints = Number((Number(candles[endBar - 1].close) - entry).toFixed(2));
+        }
       } else if (isBearish) {
-        for (let j = patternIdx + 1; j < candles.length; j++) {
+        for (let j = patternIdx + 1; j < endBar; j++) {
           const hi = Number(candles[j].high);
           const lo = Number(candles[j].low);
           if (lo <= target) {
-            outcome = "TARGET_HIT";
-            pnlPoints = Number((entry - target).toFixed(2));
+            hitTarget = true;
+            barsToOutcome = j - patternIdx;
             break;
           } else if (hi >= stopLoss) {
-            outcome = "SL_HIT";
-            pnlPoints = -Number((stopLoss - entry).toFixed(2));
+            hitSl = true;
+            barsToOutcome = j - patternIdx;
             break;
           }
+        }
+        if (hitTarget) {
+          outcome = "TARGET_HIT";
+          pnlPoints = Number((entry - target).toFixed(2));
+        } else if (hitSl) {
+          outcome = "SL_HIT";
+          pnlPoints = -Number((stopLoss - entry).toFixed(2));
+        } else if (endBar < candles.length) {
+          outcome = "TIME_EXPIRED";
+          barsToOutcome = maxBars;
+          pnlPoints = Number((entry - Number(candles[endBar - 1].close)).toFixed(2));
         }
       }
     }
   }
+
+  const atmStrike = calculateFnoStrike(entry);
+  const optType = isBullish ? "CE" : "PE";
+  const fnoStrikeStr = `${atmStrike} ${optType}`;
+  const fnoInstrument = p.fno_instrument || `BUY ${fnoStrikeStr} / ${isBullish ? 'BUY' : 'SHORT'} FUTURE`;
+  const maxHoldingDays = p.max_holding_days || (timeframe === "1D" || timeframe === "1W" ? "1–3 Days" : "15–30 Mins");
 
   return {
     ...p,
@@ -249,7 +297,12 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
     risk_reward: rr,
     confidence: p.confidence || (name.includes("Bottom") || name.includes("Top") || name.includes("Head") ? "HIGH" : "MEDIUM"),
     outcome: outcome,
-    pnl_points: pnlPoints
+    bars_to_outcome: barsToOutcome,
+    pnl_points: pnlPoints,
+    option_type: optType,
+    fno_strike: fnoStrikeStr,
+    fno_instrument: fnoInstrument,
+    max_holding_days: maxHoldingDays
   };
 };
 
@@ -724,7 +777,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
     ? data.detected_patterns[selectedPatternIndex]
     : data?.detected_patterns?.[data.detected_patterns.length - 1];
 
-  // Accuracy & Win-Rate Statistics
+  // Accuracy & Win-Rate Statistics strictly within F&O Days Horizon
   const patternsList = data?.detected_patterns || [];
   const targetsHitCount = data?.accuracy_stats?.targets_hit !== undefined
     ? data.accuracy_stats.targets_hit
@@ -732,6 +785,9 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   const slHitCount = data?.accuracy_stats?.sl_hit !== undefined
     ? data.accuracy_stats.sl_hit
     : patternsList.filter(p => p.outcome === "SL_HIT").length;
+  const timeExpiredCount = data?.accuracy_stats?.time_expired !== undefined
+    ? data.accuracy_stats.time_expired
+    : patternsList.filter(p => p.outcome === "TIME_EXPIRED").length;
   const activeCount = data?.accuracy_stats?.active_trades !== undefined
     ? data.accuracy_stats.active_trades
     : patternsList.filter(p => p.outcome === "ACTIVE" && (p.recommendation === "BUY" || p.recommendation === "SELL")).length;
@@ -1010,16 +1066,29 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                       </span>
                     </div>
 
+                    {/* F&O Instrument & Strike Callout */}
+                    {activePattern.is_actionable && activePattern.fno_instrument && (
+                      <div className="mt-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between text-[10px]">
+                        <span className="text-gray-400 font-bold uppercase text-[9px]">F&O Trade:</span>
+                        <span className="font-extrabold text-amber-300 font-mono tracking-wide">
+                          {activePattern.fno_instrument}
+                        </span>
+                      </div>
+                    )}
+
                     {activePattern.is_actionable && activePattern.entry && activePattern.target && activePattern.stop_loss ? (
                       <>
                         <div className="mt-2 text-xs font-bold text-white flex items-center justify-between">
                           <span>
                             {activePattern.recommendation === "BUY" ? (
-                              <span className="text-emerald-400 font-extrabold">▶ BUY HERE:</span>
+                              <span className="text-emerald-400 font-extrabold">▶ BUY CALL (CE) / FUTURE:</span>
                             ) : (
-                              <span className="text-rose-400 font-extrabold">▶ SELL HERE:</span>
+                              <span className="text-rose-400 font-extrabold">▶ BUY PUT (PE) / SHORT:</span>
                             )}
                             {" "}{currencySymbol}{activePattern.entry?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                          <span className="text-[9px] text-gray-400 font-mono">
+                            Max: {activePattern.max_holding_days || "1–3 Days"}
                           </span>
                         </div>
 
@@ -1067,23 +1136,28 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                       </div>
                     )}
 
-                    {/* Outcome Status Badge */}
+                    {/* Outcome Status Badge strictly within 1-3 days */}
                     <div className="mt-2 pt-2 border-t border-gray-850 flex items-center justify-between">
                       <span className="text-[9px] text-gray-500 font-bold uppercase">Prediction Status:</span>
                       {activePattern.outcome === "TARGET_HIT" ? (
                         <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
                           <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                          TARGET HIT (+{Math.abs(activePattern.pnl_points || activePattern.target_points)} pts)
+                          TARGET HIT (In {activePattern.bars_to_outcome || 1}D: +{Math.abs(activePattern.pnl_points || activePattern.target_points)} pts)
                         </span>
                       ) : activePattern.outcome === "SL_HIT" ? (
                         <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
                           <AlertOctagon className="w-3 h-3 text-rose-400" />
                           STOP LOSS HIT (-{Math.abs(activePattern.pnl_points || activePattern.sl_points)} pts)
                         </span>
+                      ) : activePattern.outcome === "TIME_EXPIRED" ? (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
+                          <Clock className="w-3 h-3 text-amber-400" />
+                          TIME EXPIRED (DAY 3 EXIT: {activePattern.pnl_points >= 0 ? `+${activePattern.pnl_points}` : activePattern.pnl_points} pts)
+                        </span>
                       ) : (
                         <span className="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
                           <Activity className="w-3 h-3 text-cyan-400 animate-pulse" />
-                          IN PROGRESS (ACTIVE)
+                          ACTIVE F&O POSITION
                         </span>
                       )}
                     </div>
@@ -1211,14 +1285,17 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                 </div>
               ) : null}
 
-              {/* Prediction Accuracy & Historical Scorecard */}
+              {/* F&O Prediction Accuracy (1-3 Days Window) */}
               <div className="bg-gradient-to-br from-gray-900/90 to-darkCard border border-indigo-500/30 rounded-xl p-3 shadow-lg shrink-0">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
                     <Trophy className="w-4 h-4 text-amber-400" />
-                    <span className="text-xs font-bold text-white uppercase tracking-wider font-outfit">
-                      Prediction Accuracy
-                    </span>
+                    <div>
+                      <span className="text-xs font-bold text-white uppercase tracking-wider font-outfit block">
+                        F&O Accuracy (1–3 Days)
+                      </span>
+                      <span className="text-[9px] text-gray-500 block font-medium">Daily & Intraday Contract Horizon</span>
+                    </div>
                   </div>
                   <span className={`text-[11px] font-black px-2 py-0.5 rounded-full border ${
                     parseFloat(winRate) >= 50
@@ -1229,48 +1306,58 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 text-center pt-1 border-t border-gray-800/80">
-                  <div className="bg-emerald-950/20 border border-emerald-800/30 rounded-lg p-1.5">
-                    <div className="flex items-center justify-center gap-1 text-emerald-400">
+                <div className="grid grid-cols-4 gap-1.5 text-center pt-1 border-t border-gray-800/80">
+                  <div className="bg-emerald-950/20 border border-emerald-800/30 rounded-lg p-1">
+                    <div className="flex items-center justify-center gap-0.5 text-emerald-400">
                       <CheckCircle2 className="w-3 h-3" />
-                      <span className="font-extrabold text-sm font-mono">{targetsHitCount}</span>
+                      <span className="font-extrabold text-xs font-mono">{targetsHitCount}</span>
                     </div>
-                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter block mt-0.5">
-                      Target Hit
+                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter block mt-0.5">
+                      Target &lt;3D
                     </span>
                   </div>
 
-                  <div className="bg-rose-950/20 border border-rose-800/30 rounded-lg p-1.5">
-                    <div className="flex items-center justify-center gap-1 text-rose-400">
+                  <div className="bg-rose-950/20 border border-rose-800/30 rounded-lg p-1">
+                    <div className="flex items-center justify-center gap-0.5 text-rose-400">
                       <AlertOctagon className="w-3 h-3" />
-                      <span className="font-extrabold text-sm font-mono">{slHitCount}</span>
+                      <span className="font-extrabold text-xs font-mono">{slHitCount}</span>
                     </div>
-                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter block mt-0.5">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter block mt-0.5">
                       SL Hit
                     </span>
                   </div>
 
-                  <div className="bg-cyan-950/20 border border-cyan-800/30 rounded-lg p-1.5">
-                    <div className="flex items-center justify-center gap-1 text-cyan-400">
-                      <Activity className="w-3 h-3" />
-                      <span className="font-extrabold text-sm font-mono">{activeCount}</span>
+                  <div className="bg-amber-950/20 border border-amber-800/30 rounded-lg p-1">
+                    <div className="flex items-center justify-center gap-0.5 text-amber-400">
+                      <Clock className="w-3 h-3" />
+                      <span className="font-extrabold text-xs font-mono">{timeExpiredCount}</span>
                     </div>
-                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter block mt-0.5">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter block mt-0.5">
+                      Theta Exit
+                    </span>
+                  </div>
+
+                  <div className="bg-cyan-950/20 border border-cyan-800/30 rounded-lg p-1">
+                    <div className="flex items-center justify-center gap-0.5 text-cyan-400">
+                      <Activity className="w-3 h-3" />
+                      <span className="font-extrabold text-xs font-mono">{activeCount}</span>
+                    </div>
+                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter block mt-0.5">
                       Active
                     </span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between text-[10px] text-gray-400 pt-2 mt-2 border-t border-gray-850/60 font-mono">
-                  <span>Resolved: <strong className="text-white">{totalDecided}</strong></span>
-                  <span>Net P&L: <strong className={parseFloat(netPnlPoints) >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                  <span>Resolved (&lt;3D): <strong className="text-white">{totalDecided}</strong></span>
+                  <span>Net Points: <strong className={parseFloat(netPnlPoints) >= 0 ? "text-emerald-400" : "text-rose-400"}>
                     {parseFloat(netPnlPoints) >= 0 ? `+${netPnlPoints}` : netPnlPoints} pts
                   </strong></span>
                 </div>
               </div>
 
               <h4 className="font-bold text-white text-sm border-b border-gray-850 pb-2 mb-3 shrink-0">
-                Detected Patterns ({data?.detected_patterns?.length || 0})
+                F&O Patterns Detected ({data?.detected_patterns?.length || 0})
               </h4>
               <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
                 {data?.detected_patterns && data.detected_patterns.length > 0 ? (
@@ -1301,18 +1388,33 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                           <span className="text-gray-500 font-mono text-[9px]">{p.time}</span>
                         </div>
 
+                        {/* F&O Contract banner */}
+                        {p.is_actionable && p.fno_instrument && (
+                          <div className="flex items-center justify-between px-2 py-1 rounded bg-indigo-950/30 border border-indigo-500/20 text-[9px] mt-1 font-mono">
+                            <span className="text-gray-400 font-bold uppercase text-[8px]">F&O Trade:</span>
+                            <span className="font-extrabold text-amber-300">
+                              {p.fno_instrument}
+                            </span>
+                          </div>
+                        )}
+
                         {/* Outcome Badge */}
                         <div className="flex items-center justify-between pt-1">
                           <span className="text-[9px] text-gray-400 font-medium">Outcome:</span>
                           {p.outcome === "TARGET_HIT" ? (
                             <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                               <CheckCircle2 className="w-2.5 h-2.5" />
-                              Target Hit (+{Math.abs(p.pnl_points || p.target_points)} pts)
+                              Target Hit (In {p.bars_to_outcome || 1}D: +{Math.abs(p.pnl_points || p.target_points)} pts)
                             </span>
                           ) : p.outcome === "SL_HIT" ? (
                             <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1">
                               <AlertOctagon className="w-2.5 h-2.5" />
                               SL Hit (-{Math.abs(p.pnl_points || p.sl_points)} pts)
+                            </span>
+                          ) : p.outcome === "TIME_EXPIRED" ? (
+                            <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                              <Clock className="w-2.5 h-2.5" />
+                              Time Exit (Day 3: {p.pnl_points >= 0 ? `+${p.pnl_points}` : p.pnl_points} pts)
                             </span>
                           ) : (
                             <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 flex items-center gap-1">
