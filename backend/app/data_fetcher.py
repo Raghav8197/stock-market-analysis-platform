@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 from app.indicators import add_all_indicators
-from app.patterns import scan_patterns
+from app.patterns import scan_patterns, detect_patterns_with_levels
 
 # Ticker mapper for indices and Indian/US equities
 TICKER_MAP = {
@@ -636,47 +636,61 @@ def analyze_and_package_stock(symbol: str, timeframe: str = "1D") -> Dict[str, A
             "bb_upper": row["BB_Upper"] if not pd.isna(row["BB_Upper"]) else None,
             "bb_lower": row["BB_Lower"] if not pd.isna(row["BB_Lower"]) else None,
         })
-        
-        # Check patterns for this row
-        all_patterns = [
-            "Doji", "Hammer", "Bullish_Engulfing", "Bearish_Engulfing", 
-            "Double_Top", "Double_Bottom", "Head_Shoulders", 
-            "Shooting_Star", "Morning_Star", "Evening_Star"
-        ]
-        
-        for pattern in all_patterns:
-            col_name = f"Pattern_{pattern}"
-            if col_name in row and row[col_name]:
-                # Map friendly labels
-                friendly_name = pattern.replace("_", " ")
-                if pattern == "Double_Bottom":
-                    friendly_name = "Double Bottom (W-Pattern)"
-                elif pattern == "Double_Top":
-                    friendly_name = "Double Top (M-Pattern)"
-                elif pattern == "Head_Shoulders":
-                    friendly_name = "Head & Shoulders"
-                
-                # Determine recommendation and visuals
-                is_bullish = pattern in ["Hammer", "Bullish_Engulfing", "Double_Bottom", "Morning_Star"]
-                is_bearish = pattern in ["Bearish_Engulfing", "Double_Top", "Head_Shoulders", "Shooting_Star", "Evening_Star"]
-                
-                rec = "NEUTRAL"
-                if is_bullish:
-                    rec = "BUY"
-                elif is_bearish:
-                    rec = "SELL"
-                    
-                position = "belowBar" if is_bullish else "aboveBar"
-                color = "#10B981" if is_bullish else "#EF4444" if is_bearish else "#FBBF24"
-                
-                patterns_list.append({
-                    "time": time_val,
-                    "pattern": friendly_name,
-                    "price": row["Close"],
-                    "position": position,
-                    "color": color,
-                    "recommendation": rec
-                })
+
+    # Detect patterns with trading levels
+    detected = detect_patterns_with_levels(df_full)
+
+    for result in detected:
+        bi = result["bar_index"]
+        row = df_full.iloc[bi]
+        idx = df_full.index[bi]
+
+        if is_intraday:
+            time_val_p = int(idx.timestamp())
+        else:
+            time_val_p = idx.strftime("%Y-%m-%d")
+
+        # Determine recommendation and colour
+        if result["is_bullish"] is None:
+            rec = "WATCH"
+            position = "aboveBar"
+            color = "#FBBF24"
+        elif result["is_bullish"]:
+            rec = "BUY"
+            position = "belowBar"
+            color = "#10B981"
+        else:
+            rec = "SELL"
+            position = "aboveBar"
+            color = "#EF4444"
+
+        # Map pattern_points bar_index → time
+        mapped_points = []
+        for pt in result["pattern_points"]:
+            pt_idx = df_full.index[pt["bar_index"]]
+            if is_intraday:
+                pt_time = int(pt_idx.timestamp())
+            else:
+                pt_time = pt_idx.strftime("%Y-%m-%d")
+            mapped_points.append({
+                "time": pt_time,
+                "price": pt["price"],
+                "label": pt["label"],
+            })
+
+        patterns_list.append({
+            "time": time_val_p,
+            "pattern": result["pattern"],
+            "price": round(float(row["Close"]), 2),
+            "position": position,
+            "color": color,
+            "recommendation": rec,
+            "entry": round(float(result["entry"]), 2),
+            "target": round(float(result["target"]), 2),
+            "stop_loss": round(float(result["stop_loss"]), 2),
+            "confidence": result["confidence"],
+            "pattern_points": mapped_points,
+        })
                 
     return {
         "symbol": symbol.upper(),
