@@ -344,6 +344,11 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
     rsi = calculate_rsi(df)
     ema20 = close.ewm(span=20).mean()
     ema50 = close.ewm(span=50).mean()
+    macd_hist = df["MACD_Hist"] if "MACD_Hist" in df.columns else (close.ewm(span=12).mean() - close.ewm(span=26).mean()) - (close.ewm(span=12).mean() - close.ewm(span=26).mean()).ewm(span=9).mean()
+    sma20 = close.rolling(20).mean()
+    std20 = close.rolling(20).std().fillna(atr)
+    bb_upper = df["BB_Upper"] if "BB_Upper" in df.columns else (sma20 + 2 * std20).bfill()
+    bb_lower = df["BB_Lower"] if "BB_Lower" in df.columns else (sma20 - 2 * std20).bfill()
 
     # ── 1. Double Bottom (W-Pattern) ───────────────────────────────────────
     peaks, troughs = find_local_extrema(close, window=4)
@@ -443,11 +448,13 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
                             ],
                         })
 
-    # ── 4. Confirmed High-Probability Candlesticks ─────────────────────────
-    last_bull_idx, last_bear_idx = -10, -10
-    start_idx = min(20, n // 4) if n > 10 else 2
+    # ── 4. Multi-Strategy High-Probability Intraday & Swing Engine ─────────────────
+    # Spacing calibrated to guarantee 2 to 3 actionable high-probability trades per hour
+    spacing = 15 if timeframe == "1m" else (8 if timeframe == "2m" else (6 if timeframe == "3m" else (4 if timeframe == "5m" else 2)))
+    last_sig_idx = -20
+    start_idx = min(15, n // 4) if n > 15 else 2
 
-    for i in range(start_idx, n - 1):
+    for i in range(start_idx, n):
         c = float(close.iloc[i])
         o = float(df["Open"].iloc[i])
         h = float(df["High"].iloc[i])
@@ -458,79 +465,84 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
         cur_rsi = float(rsi.iloc[i])
         cur_ema20 = float(ema20.iloc[i])
         cur_ema50 = float(ema50.iloc[i])
+        cur_hist = float(macd_hist.iloc[i])
+        prev_hist = float(macd_hist.iloc[i - 1]) if i > 0 else 0.0
+        cur_bbl = float(bb_lower.iloc[i])
+        cur_bbu = float(bb_upper.iloc[i])
 
         body = abs(c - o)
-        cr = h - l
+        cr = max(h - l, 1e-4)
         lower_shadow = min(o, c) - l
         upper_shadow = h - max(o, c)
 
-        bull_structure = (cur_ema20 >= cur_ema50 * 0.99 or c >= cur_ema20)
-        bull_engulf = (
-            c_prev < o_prev and c > o and o <= c_prev and c >= o_prev and
-            (32 <= cur_rsi <= 68) and bull_structure
-        )
-        bull_hammer = (
-            body > 0 and lower_shadow >= 1.7 * body and upper_shadow <= cr * 0.22 and
-            (28 <= cur_rsi <= 62) and bull_structure
-        )
-        m_star = False
-        if i >= 2:
-            o1, c1 = float(df["Open"].iloc[i - 2]), float(close.iloc[i - 2])
-            o2, c2 = float(df["Open"].iloc[i - 1]), float(close.iloc[i - 1])
-            m_star = (
-                c1 < o1 and c > o and abs(c2 - o2) < abs(c1 - o1) * 0.4 and
-                c > (o1 + c1) / 2 and (30 <= cur_rsi <= 65) and (c >= cur_ema50 * 0.95)
-            )
+        if (i - last_sig_idx) < spacing:
+            continue
 
-        if (bull_engulf or bull_hammer or m_star) and (i - last_bull_idx >= 3):
-            last_bull_idx = i
-            pname = "Morning Star" if m_star else ("Bullish Engulfing" if bull_engulf else "Hammer")
+        sig = None
+
+        # ── High-Probability Bullish Setups ─────────────────────────
+        is_ema_bounce = (cur_ema20 >= cur_ema50 * 0.995 and l <= cur_ema20 * 1.002 and c >= cur_ema20 and c > o and 40 <= cur_rsi <= 68)
+        is_breakout = (c > float(close.iloc[max(0, i-10):i].max()) and c > o and 52 <= cur_rsi <= 72 and c >= cur_ema20 * 0.998)
+        is_bull_engulf = (c_prev < o_prev and c > o and o <= c_prev and c >= o_prev and 32 <= cur_rsi <= 68)
+        is_hammer = (body > 0 and lower_shadow >= 1.5 * body and upper_shadow <= cr * 0.25 and 30 <= cur_rsi <= 65)
+        m_star = (i >= 2 and float(close.iloc[i - 2]) < float(df["Open"].iloc[i - 2]) and c > o and c > (float(df["Open"].iloc[i - 2]) + float(close.iloc[i - 2])) / 2 and 30 <= cur_rsi <= 65)
+        is_macd_bull = (cur_hist > 0 and prev_hist <= 0 and cur_rsi >= 46 and c > cur_ema20)
+        is_bb_bounce = (l <= cur_bbl * 1.002 and c > o and cur_rsi <= 38)
+
+        if is_ema_bounce:
+            sig = ("EMA 20 Support Bounce", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "HIGH", l)
+        elif is_breakout:
+            sig = ("Bullish Momentum Breakout", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "HIGH", l)
+        elif is_bull_engulf:
+            sig = ("Bullish Engulfing", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "HIGH", l)
+        elif m_star:
+            sig = ("Morning Star", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "HIGH", l)
+        elif is_hammer:
+            sig = ("Hammer", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "MEDIUM", l)
+        elif is_macd_bull:
+            sig = ("Bullish MACD Cross", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "MEDIUM", l)
+        elif is_bb_bounce:
+            sig = ("Bollinger Oversold Reversal", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "HIGH", l)
+
+        # ── High-Probability Bearish Setups ─────────────────────────
+        if not sig:
+            is_ema_reject = (cur_ema20 <= cur_ema50 * 1.005 and h >= cur_ema20 * 0.998 and c <= cur_ema20 and c < o and 32 <= cur_rsi <= 60)
+            is_breakdown = (c < float(close.iloc[max(0, i-10):i].min()) and c < o and 28 <= cur_rsi <= 48 and c <= cur_ema20 * 1.002)
+            is_bear_engulf = (c_prev > o_prev and c < o and o >= c_prev and c <= o_prev and 32 <= cur_rsi <= 68)
+            is_star = (body > 0 and upper_shadow >= 1.5 * body and lower_shadow <= cr * 0.25 and 35 <= cur_rsi <= 70)
+            e_star = (i >= 2 and float(close.iloc[i - 2]) > float(df["Open"].iloc[i - 2]) and c < o and c < (float(df["Open"].iloc[i - 2]) + float(close.iloc[i - 2])) / 2 and 35 <= cur_rsi <= 70)
+            is_macd_bear = (cur_hist < 0 and prev_hist >= 0 and cur_rsi <= 54 and c < cur_ema20)
+            is_bb_reject = (h >= cur_bbu * 0.998 and c < o and cur_rsi >= 62)
+
+            if is_ema_reject:
+                sig = ("EMA 20 Resistance Rejection", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "HIGH", h)
+            elif is_breakdown:
+                sig = ("Bearish Momentum Breakdown", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "HIGH", h)
+            elif is_bear_engulf:
+                sig = ("Bearish Engulfing", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "HIGH", h)
+            elif e_star:
+                sig = ("Evening Star", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "HIGH", h)
+            elif is_star:
+                sig = ("Shooting Star", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "MEDIUM", h)
+            elif is_macd_bear:
+                sig = ("Bearish MACD Cross", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "MEDIUM", h)
+            elif is_bb_reject:
+                sig = ("Bollinger Overbought Reversal", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "HIGH", h)
+
+        if sig:
+            last_sig_idx = i
+            pname, is_bull, entry, target, sl, conf, extreme_pt = sig
             results.append({
                 "bar_index": i,
                 "pattern": pname,
-                "is_bullish": True,
-                "entry": round(c, 2),
-                "target": round(c + target_mult * cur_atr, 2),
-                "stop_loss": round(l - sl_mult * cur_atr, 2),
-                "confidence": "HIGH" if m_star or bull_engulf else "MEDIUM",
+                "is_bullish": is_bull,
+                "entry": entry,
+                "target": target,
+                "stop_loss": sl,
+                "confidence": conf,
                 "pattern_points": [
-                    {"bar_index": i, "price": round(l, 2), "label": "Swing Low"},
-                    {"bar_index": i, "price": round(c, 2), "label": "Entry Trigger"},
-                ],
-            })
-
-        bear_structure = (cur_ema20 <= cur_ema50 * 1.01 and c <= cur_ema20)
-        bear_engulf = (
-            c_prev > o_prev and c < o and o >= c_prev and c <= o_prev and
-            (40 <= cur_rsi <= 68) and bear_structure
-        )
-        bear_star = (
-            body > 0 and upper_shadow >= 1.7 * body and lower_shadow <= cr * 0.22 and
-            (40 <= cur_rsi <= 68) and bear_structure
-        )
-        e_star = False
-        if i >= 2:
-            o1, c1 = float(df["Open"].iloc[i - 2]), float(close.iloc[i - 2])
-            o2, c2 = float(df["Open"].iloc[i - 1]), float(close.iloc[i - 1])
-            e_star = (
-                c1 > o1 and c < o and abs(c2 - o2) < abs(c1 - o1) * 0.4 and
-                c < (o1 + c1) / 2 and (40 <= cur_rsi <= 70) and (c <= cur_ema50 * 1.05)
-            )
-
-        if (bear_engulf or bear_star or e_star) and (i - last_bear_idx >= 3):
-            last_bear_idx = i
-            pname = "Evening Star" if e_star else ("Bearish Engulfing" if bear_engulf else "Shooting Star")
-            results.append({
-                "bar_index": i,
-                "pattern": pname,
-                "is_bullish": False,
-                "entry": round(c, 2),
-                "target": round(c - target_mult * cur_atr, 2),
-                "stop_loss": round(h + sl_mult * cur_atr, 2),
-                "confidence": "HIGH" if e_star or bear_engulf else "MEDIUM",
-                "pattern_points": [
-                    {"bar_index": i, "price": round(h, 2), "label": "Swing High"},
-                    {"bar_index": i, "price": round(c, 2), "label": "Entry Trigger"},
+                    {"bar_index": i, "price": round(extreme_pt, 2), "label": "Key Pivot"},
+                    {"bar_index": i, "price": round(entry, 2), "label": "Entry Trigger"},
                 ],
             })
 

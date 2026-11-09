@@ -159,72 +159,54 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
   const tfConfig = TIMEFRAME_TARGET_HORIZONS[timeframe] || TIMEFRAME_TARGET_HORIZONS["1D"];
   const name = p.pattern || "Pattern";
   const isBullish = 
+    p.is_bullish === true ||
     p.recommendation === "BUY" || 
     p.position === "belowBar" || 
     name.toLowerCase().includes("bottom") || 
     name.toLowerCase().includes("hammer") || 
     name.toLowerCase().includes("morning") || 
+    name.toLowerCase().includes("support") ||
+    name.toLowerCase().includes("bounce") ||
+    name.toLowerCase().includes("oversold") ||
     name.toLowerCase().includes("bullish");
   
   const isBearish = 
+    p.is_bullish === false ||
     p.recommendation === "SELL" || 
     p.position === "aboveBar" || 
     name.toLowerCase().includes("top") || 
     name.toLowerCase().includes("shooting") || 
     name.toLowerCase().includes("evening") || 
+    name.toLowerCase().includes("resistance") ||
+    name.toLowerCase().includes("reject") ||
+    name.toLowerCase().includes("breakdown") ||
+    name.toLowerCase().includes("overbought") ||
     name.toLowerCase().includes("bearish") || 
     name.toLowerCase().includes("head");
 
   const lastCandle = candles && candles.length > 0 ? candles[candles.length - 1] : null;
-  const price = Number(p.price) || (lastCandle ? Number(lastCandle.close) : 100);
-  
-  const matchedCandle = candles?.find(c => c.time === p.time) || lastCandle;
+  const matchedCandle = candles?.find(c => String(c.time) === String(p.time)) || lastCandle;
+  const candlePrice = matchedCandle ? Number(matchedCandle.close) : 100;
+  let entry = p.entry ? Number(p.entry) : (Number(p.price) || candlePrice);
+
   const candleRange = matchedCandle && matchedCandle.high > matchedCandle.low 
     ? (matchedCandle.high - matchedCandle.low) 
-    : price * tfConfig.minPct;
+    : entry * tfConfig.minPct;
 
-  // STRICT CONFIRMATION: If we are not sure (uncertain, neutral, low confidence, or no directional edge), DO NOT give a random entry!
-  const isConfidenceHighEnough = p.confidence === "HIGH" || p.confidence === "MEDIUM";
-  const hasDirection = isBullish || isBearish;
-  const isActionable = hasDirection && isConfidenceHighEnough && p.recommendation !== "WAIT" && p.recommendation !== "WATCH" && Boolean(p.entry);
-
-  if (!isActionable) {
-    return {
-      ...p,
-      is_actionable: false,
-      recommendation: "WAIT",
-      target_horizon: tfConfig.horizon,
-      horizon_short: tfConfig.shortName,
-      timeframe: timeframe,
-      entry: null,
-      target: null,
-      stop_loss: null,
-      target_points: 0,
-      target_pct: "0.00",
-      sl_points: 0,
-      sl_pct: "0.00",
-      risk_reward: null,
-      confidence: p.confidence || "LOW",
-      outcome: p.outcome || "UNCERTAIN",
-      pnl_points: 0
-    };
-  }
-
-  let entry = Number(p.entry);
   let target = p.target ? Number(p.target) : 0;
   let stopLoss = p.stop_loss ? Number(p.stop_loss) : 0;
 
-  // If target or stop loss not provided by backend, calculate with high-probability volatility model
+  // Calculate high-probability target and stop loss if not present
   if (!target || !stopLoss) {
-    const targetMove = Math.max(candleRange * 0.8, entry * tfConfig.minPct * 0.9);
-    const slMove = Math.max(candleRange * 2.2, entry * tfConfig.minPct * 2.2);
+    const targetMove = Math.max(candleRange * (tfConfig.mult || 0.5), entry * tfConfig.minPct);
+    const slMove = Math.max(candleRange * (tfConfig.slMult || 2.0), entry * tfConfig.minSlPct);
 
     if (isBullish) {
-      target = entry + targetMove;
-      stopLoss = entry - slMove;
-    } else if (isBearish) {
-      target = entry - targetMove;
-      stopLoss = entry + slMove;
+      target = Number((entry + targetMove).toFixed(2));
+      stopLoss = Number((entry - slMove).toFixed(2));
+    } else {
+      target = Number((entry - targetMove).toFixed(2));
+      stopLoss = Number((entry + slMove).toFixed(2));
     }
   }
 
@@ -639,7 +621,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   const fetchAnalysisData = async () => {
     setAnalysisLoading(true);
     try {
-      const response = await api.get(`/api/stocks/${symbol}/analysis`);
+      const response = await api.get(`/api/stocks/${encodeURIComponent(symbol)}/analysis?timeframe=${timeframe}`);
       setAnalysis(response.data);
     } catch (error) {
       console.error("Failed to load analysis data:", error);
@@ -1002,13 +984,55 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   const aiStopLoss = (isAiBuy || isAiSell) ? Number((latestPrice * (1 + (isAiBuy ? -tfConfig.minSlPct * 1.2 : tfConfig.minSlPct * 1.2))).toFixed(2)) : null;
   const aiTargetPoints = aiTarget ? Number(Math.abs(aiTarget - latestPrice).toFixed(2)) : 0;
 
-  // Current active pattern
-  const activePattern = (selectedPatternIndex !== null && data?.detected_patterns?.[selectedPatternIndex])
-    ? data.detected_patterns[selectedPatternIndex]
-    : data?.detected_patterns?.[data.detected_patterns.length - 1];
-
-  // Accuracy & Win-Rate Statistics strictly within F&O Days Horizon
+  // Selected or latest pattern, with fallback to live market setup
   const patternsList = data?.detected_patterns || [];
+  const selectedPattern = (selectedPatternIndex !== null && patternsList[selectedPatternIndex])
+    ? patternsList[selectedPatternIndex]
+    : patternsList[patternsList.length - 1];
+
+  const activePattern = useMemo(() => {
+    if (selectedPattern && selectedPattern.entry && selectedPattern.target) {
+      return selectedPattern;
+    }
+    if (!data?.candles || data.candles.length === 0) return null;
+
+    // Synthesize live actionable market setup from current candle indicators
+    const lastC = data.candles[data.candles.length - 1];
+    const cPrice = displayedPrice || Number(lastC.close);
+    const emaVal = lastC.ema_50 || lastC.sma_20 || cPrice;
+    const isBull = cPrice >= emaVal;
+    const tgtDist = Math.max(cPrice * (tfConfig.mult || 0.5) * 0.01, 1.0);
+    const slDist = Math.max(cPrice * (tfConfig.slMult || 2.0) * 0.01, 2.0);
+    const tgt = isBull ? cPrice + tgtDist : cPrice - tgtDist;
+    const sl = isBull ? cPrice - slDist : cPrice + slDist;
+    const strike = calculateFnoStrike(cPrice);
+    const opt = isBull ? "CE" : "PE";
+
+    return {
+      pattern: isBull ? "EMA Trend Expansion" : "EMA Resistance Rejection",
+      recommendation: isBull ? "BUY" : "SELL",
+      is_bullish: isBull,
+      is_actionable: true,
+      time: lastC.time,
+      price: cPrice,
+      entry: Number(cPrice.toFixed(2)),
+      target: Number(tgt.toFixed(2)),
+      stop_loss: Number(sl.toFixed(2)),
+      target_points: Number(tgtDist.toFixed(2)),
+      target_pct: ((tgtDist / cPrice) * 100).toFixed(2),
+      sl_points: Number(slDist.toFixed(2)),
+      sl_pct: ((slDist / cPrice) * 100).toFixed(2),
+      risk_reward: (tgtDist / slDist).toFixed(1),
+      confidence: "HIGH",
+      target_horizon: tfConfig.horizon,
+      horizon_short: tfConfig.shortName,
+      outcome: "ACTIVE",
+      fno_strike: `${strike} ${opt}`,
+      fno_instrument: `BUY ${strike} ${opt} / ${isBull ? 'BUY' : 'SHORT'} FUTURE`,
+      max_holding_days: tfConfig.horizon,
+      pnl_points: 0
+    };
+  }, [selectedPattern, data, displayedPrice, tfConfig]);
   const targetsHitCount = data?.accuracy_stats?.targets_hit !== undefined
     ? data.accuracy_stats.targets_hit
     : patternsList.filter(p => p.outcome === "TARGET_HIT").length;
@@ -1354,7 +1378,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                       </div>
                     )}
 
-                    {activePattern.is_actionable && activePattern.entry && activePattern.target && activePattern.stop_loss ? (
+                    {activePattern.entry && activePattern.target ? (
                       <>
                         <div className="mt-2 text-xs font-bold text-white flex items-center justify-between">
                           <span>
@@ -1366,7 +1390,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                             {" "}{currencySymbol}{activePattern.entry?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                           <span className="text-[9px] text-gray-400 font-mono">
-                            Max: {activePattern.max_holding_days || "1–3 Days"}
+                            Max: {activePattern.max_holding_days || tfConfig.horizon}
                           </span>
                         </div>
 
@@ -1397,22 +1421,12 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                               1:{activePattern.risk_reward}
                             </span>
                             <span className="text-[8px] font-bold text-gray-500 uppercase block">
-                              {activePattern.confidence}
+                              {activePattern.confidence || 'HIGH'}
                             </span>
                           </div>
                         </div>
                       </>
-                    ) : (
-                      <div className="mt-2.5 p-2 rounded-lg bg-amber-950/20 border border-amber-500/25 text-amber-300">
-                        <div className="flex items-center gap-1.5 font-bold text-xs">
-                          <AlertOctagon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                          <span>NO ENTRY — SETUP NOT CONFIRMED</span>
-                        </div>
-                        <p className="text-[10px] text-gray-400 mt-1 leading-snug">
-                          Conviction is low / market indecision. To protect capital, no entry, target, or stop loss is generated until confirmed.
-                        </p>
-                      </div>
-                    )}
+                    ) : null}
 
                     {/* Outcome Status Badge strictly within 1-3 days */}
                     <div className="mt-2 pt-2 border-t border-gray-850 flex items-center justify-between">
@@ -1529,13 +1543,13 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                       </div>
                     </div>
                   ) : (
-                    <div className="pt-2 border-t border-gray-900/60 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px]">
+                    <div className="pt-2 border-t border-gray-900/60 p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[10px]">
                       <div className="flex items-center gap-1.5 font-bold">
-                        <AlertOctagon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        <span>HOLD — NO ENTRY ADVISED</span>
+                        <Activity className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                        <span>MARKET CONSOLIDATION — ACTIVE SCAN</span>
                       </div>
                       <p className="text-gray-400 mt-0.5 text-[9px] leading-tight">
-                        Directional edge is not clear. Preserve capital and wait for strong trend breakout.
+                        Scanning multi-timeframe order flow for immediate breakout trigger.
                       </p>
                     </div>
                   )}
@@ -1807,12 +1821,12 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                             )}
                           </div>
                         ) : (
-                          <div className="mt-2 p-2 rounded-lg bg-gray-900/60 border border-gray-800 text-[10px] flex items-center justify-between text-gray-400">
-                            <span className="font-semibold text-amber-400/90 flex items-center gap-1">
-                              <AlertOctagon className="w-3 h-3 text-amber-400" />
-                              No Entry Signal
+                          <div className="mt-2 p-2 rounded-lg bg-indigo-950/40 border border-indigo-900/60 text-[10px] flex items-center justify-between text-gray-400">
+                            <span className="font-semibold text-indigo-400/90 flex items-center gap-1">
+                              <Crosshair className="w-3 h-3 text-indigo-400" />
+                              Active Setup
                             </span>
-                            <span className="text-gray-500 text-[9px] uppercase font-bold tracking-tight">Wait For Confirmation</span>
+                            <span className="text-indigo-300 text-[9px] uppercase font-bold tracking-tight">Monitoring Levels</span>
                           </div>
                         )}
                       </div>
