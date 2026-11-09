@@ -289,6 +289,52 @@ def calculate_fno_strike(price: float) -> float:
         step = 0.5
     return round(round(price / step) * step, 2)
 
+def calculate_trade_levels(entry: float, is_bullish: bool, timeframe: str) -> tuple:
+    """
+    Calculate high-probability intraday and swing targets & stop losses.
+    For index / high-value assets (price >= 10,000 like NIFTY, BANKNIFTY),
+    targets are strictly calibrated within 50 to 100 points.
+    """
+    p = float(entry)
+    if p >= 10000:
+        # Strictly calibrated within 50 - 100 points for indices/F&O
+        if timeframe in ["1m", "2m"]:
+            tgt_pts = 50.0
+            sl_pts = 25.0
+        elif timeframe in ["3m", "5m"]:
+            tgt_pts = 65.0
+            sl_pts = 32.0
+        elif timeframe in ["15m", "30m"]:
+            tgt_pts = 80.0
+            sl_pts = 40.0
+        elif timeframe in ["60m", "1h"]:
+            tgt_pts = 95.0
+            sl_pts = 45.0
+        else:  # 1D, 1W
+            tgt_pts = 100.0
+            sl_pts = 50.0
+    elif p >= 2000:
+        tgt_pts = round(max(p * 0.005, 15.0), 2)
+        sl_pts = round(tgt_pts / 2.0, 2)
+    elif p >= 500:
+        tgt_pts = round(max(p * 0.006, 6.0), 2)
+        sl_pts = round(tgt_pts / 2.0, 2)
+    elif p >= 100:
+        tgt_pts = round(max(p * 0.008, 2.0), 2)
+        sl_pts = round(tgt_pts / 2.0, 2)
+    else:
+        tgt_pts = round(max(p * 0.012, 0.5), 2)
+        sl_pts = round(tgt_pts / 2.0, 2)
+
+    if is_bullish:
+        target = round(p + tgt_pts, 2)
+        stop_loss = round(p - sl_pts, 2)
+    else:
+        target = round(p - tgt_pts, 2)
+        stop_loss = round(p + sl_pts, 2)
+
+    return target, stop_loss, tgt_pts, sl_pts
+
 def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     """Calculate Average True Range with robust fallbacks."""
     high_low = df["High"] - df["Low"]
@@ -364,10 +410,8 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
                 neckline_pos = int(close.iloc[i1:i2].values.argmax()) + i1
 
                 if neckline_val > max(val1, val2) * 1.02:
-                    cur_atr = float(atr.iloc[i2])
                     c2 = float(close.iloc[i2])
-                    target = round(c2 + target_mult * cur_atr, 2)
-                    sl = round(min(val1, val2) - sl_mult * cur_atr, 2)
+                    target, sl, tgt_pts, sl_pts = calculate_trade_levels(c2, True, timeframe)
                     results.append({
                         "bar_index": i2,
                         "pattern": "Double Bottom (W-Pattern)",
@@ -375,6 +419,8 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
                         "entry": round(c2, 2),
                         "target": target,
                         "stop_loss": sl,
+                        "target_points": tgt_pts,
+                        "sl_points": sl_pts,
                         "confidence": "HIGH",
                         "pattern_points": [
                             {"bar_index": i1, "price": round(val1, 2), "label": "Trough 1"},
@@ -394,10 +440,8 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
                 neckline_pos = int(close.iloc[i1:i2].values.argmin()) + i1
 
                 if neckline_val < min(val1, val2) * 0.98:
-                    cur_atr = float(atr.iloc[i2])
                     c2 = float(close.iloc[i2])
-                    target = round(c2 - target_mult * cur_atr, 2)
-                    sl = round(max(val1, val2) + sl_mult * cur_atr, 2)
+                    target, sl, tgt_pts, sl_pts = calculate_trade_levels(c2, False, timeframe)
                     results.append({
                         "bar_index": i2,
                         "pattern": "Double Top (M-Pattern)",
@@ -405,6 +449,8 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
                         "entry": round(c2, 2),
                         "target": target,
                         "stop_loss": sl,
+                        "target_points": tgt_pts,
+                        "sl_points": sl_pts,
                         "confidence": "HIGH",
                         "pattern_points": [
                             {"bar_index": i1, "price": round(val1, 2), "label": "Peak 1"},
@@ -429,15 +475,17 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
                     trough2_pos = int(close.iloc[i2:i3].values.argmin()) + i2
 
                     if trough1_val < min(val_ls, val_hd) and trough2_val < min(val_rs, val_hd):
-                        cur_atr = float(atr.iloc[i3])
                         c3 = float(close.iloc[i3])
+                        target, sl, tgt_pts, sl_pts = calculate_trade_levels(c3, False, timeframe)
                         results.append({
                             "bar_index": i3,
                             "pattern": "Head & Shoulders",
                             "is_bullish": False,
                             "entry": round(c3, 2),
-                            "target": round(c3 - target_mult * cur_atr, 2),
-                            "stop_loss": round(val_rs + sl_mult * cur_atr, 2),
+                            "target": target,
+                            "stop_loss": sl,
+                            "target_points": tgt_pts,
+                            "sl_points": sl_pts,
                             "confidence": "HIGH",
                             "pattern_points": [
                                 {"bar_index": i1, "price": round(val_ls, 2), "label": "Left Shoulder"},
@@ -490,19 +538,26 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
         is_bb_bounce = (l <= cur_bbl * 1.002 and c > o and cur_rsi <= 38)
 
         if is_ema_bounce:
-            sig = ("EMA 20 Support Bounce", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "HIGH", l)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            sig = ("EMA 20 Support Bounce", True, c, target, sl, tgt_pts, sl_pts, "HIGH", l)
         elif is_breakout:
-            sig = ("Bullish Momentum Breakout", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "HIGH", l)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            sig = ("Bullish Momentum Breakout", True, c, target, sl, tgt_pts, sl_pts, "HIGH", l)
         elif is_bull_engulf:
-            sig = ("Bullish Engulfing", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "HIGH", l)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            sig = ("Bullish Engulfing", True, c, target, sl, tgt_pts, sl_pts, "HIGH", l)
         elif m_star:
-            sig = ("Morning Star", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "HIGH", l)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            sig = ("Morning Star", True, c, target, sl, tgt_pts, sl_pts, "HIGH", l)
         elif is_hammer:
-            sig = ("Hammer", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "MEDIUM", l)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            sig = ("Hammer", True, c, target, sl, tgt_pts, sl_pts, "MEDIUM", l)
         elif is_macd_bull:
-            sig = ("Bullish MACD Cross", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "MEDIUM", l)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            sig = ("Bullish MACD Cross", True, c, target, sl, tgt_pts, sl_pts, "MEDIUM", l)
         elif is_bb_bounce:
-            sig = ("Bollinger Oversold Reversal", True, c, round(c + target_mult * cur_atr, 2), round(l - sl_mult * cur_atr, 2), "HIGH", l)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            sig = ("Bollinger Oversold Reversal", True, c, target, sl, tgt_pts, sl_pts, "HIGH", l)
 
         # ── High-Probability Bearish Setups ─────────────────────────
         if not sig:
@@ -515,23 +570,30 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
             is_bb_reject = (h >= cur_bbu * 0.998 and c < o and cur_rsi >= 62)
 
             if is_ema_reject:
-                sig = ("EMA 20 Resistance Rejection", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "HIGH", h)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                sig = ("EMA 20 Resistance Rejection", False, c, target, sl, tgt_pts, sl_pts, "HIGH", h)
             elif is_breakdown:
-                sig = ("Bearish Momentum Breakdown", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "HIGH", h)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                sig = ("Bearish Momentum Breakdown", False, c, target, sl, tgt_pts, sl_pts, "HIGH", h)
             elif is_bear_engulf:
-                sig = ("Bearish Engulfing", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "HIGH", h)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                sig = ("Bearish Engulfing", False, c, target, sl, tgt_pts, sl_pts, "HIGH", h)
             elif e_star:
-                sig = ("Evening Star", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "HIGH", h)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                sig = ("Evening Star", False, c, target, sl, tgt_pts, sl_pts, "HIGH", h)
             elif is_star:
-                sig = ("Shooting Star", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "MEDIUM", h)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                sig = ("Shooting Star", False, c, target, sl, tgt_pts, sl_pts, "MEDIUM", h)
             elif is_macd_bear:
-                sig = ("Bearish MACD Cross", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "MEDIUM", h)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                sig = ("Bearish MACD Cross", False, c, target, sl, tgt_pts, sl_pts, "MEDIUM", h)
             elif is_bb_reject:
-                sig = ("Bollinger Overbought Reversal", False, c, round(c - target_mult * cur_atr, 2), round(h + sl_mult * cur_atr, 2), "HIGH", h)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                sig = ("Bollinger Overbought Reversal", False, c, target, sl, tgt_pts, sl_pts, "HIGH", h)
 
         if sig:
             last_sig_idx = i
-            pname, is_bull, entry, target, sl, conf, extreme_pt = sig
+            pname, is_bull, entry, target, sl, tgt_pts, sl_pts, conf, extreme_pt = sig
             results.append({
                 "bar_index": i,
                 "pattern": pname,
@@ -539,6 +601,8 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
                 "entry": entry,
                 "target": target,
                 "stop_loss": sl,
+                "target_points": tgt_pts,
+                "sl_points": sl_pts,
                 "confidence": conf,
                 "pattern_points": [
                     {"bar_index": i, "price": round(extreme_pt, 2), "label": "Key Pivot"},

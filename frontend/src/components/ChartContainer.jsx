@@ -62,6 +62,46 @@ const calculateFnoStrike = (price) => {
   return Number.isInteger(rounded) ? rounded : Number(rounded.toFixed(2));
 };
 
+const calculateTradeLevels = (entry, isBullish, tf = "5m") => {
+  const p = Number(entry);
+  let tgtPts, slPts;
+  if (p >= 10000) {
+    // Strictly calibrated between 50 and 100 points for indices (NIFTY, BANKNIFTY)
+    if (tf === "1m" || tf === "2m") {
+      tgtPts = 50.0;
+      slPts = 25.0;
+    } else if (tf === "3m" || tf === "5m") {
+      tgtPts = 65.0;
+      slPts = 32.0;
+    } else if (tf === "15m" || tf === "30m") {
+      tgtPts = 80.0;
+      slPts = 40.0;
+    } else if (tf === "60m" || tf === "1h") {
+      tgtPts = 95.0;
+      slPts = 45.0;
+    } else {
+      tgtPts = 100.0;
+      slPts = 50.0;
+    }
+  } else if (p >= 2000) {
+    tgtPts = Math.round(Math.max(p * 0.005, 15.0) * 100) / 100;
+    slPts = Math.round((tgtPts / 2.0) * 100) / 100;
+  } else if (p >= 500) {
+    tgtPts = Math.round(Math.max(p * 0.006, 6.0) * 100) / 100;
+    slPts = Math.round((tgtPts / 2.0) * 100) / 100;
+  } else if (p >= 100) {
+    tgtPts = Math.round(Math.max(p * 0.008, 2.0) * 100) / 100;
+    slPts = Math.round((tgtPts / 2.0) * 100) / 100;
+  } else {
+    tgtPts = Math.round(Math.max(p * 0.012, 0.5) * 100) / 100;
+    slPts = Math.round((tgtPts / 2.0) * 100) / 100;
+  }
+
+  const target = isBullish ? Number((p + tgtPts).toFixed(2)) : Number((p - tgtPts).toFixed(2));
+  const stopLoss = isBullish ? Number((p - slPts).toFixed(2)) : Number((p + slPts).toFixed(2));
+  return { target, stopLoss, tgtPts, slPts };
+};
+
 const TIMEFRAME_TARGET_HORIZONS = {
   "1m": {
     horizon: "Within 5 Mins (Same Day)",
@@ -196,18 +236,11 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
   let target = p.target ? Number(p.target) : 0;
   let stopLoss = p.stop_loss ? Number(p.stop_loss) : 0;
 
-  // Calculate high-probability target and stop loss if not present
-  if (!target || !stopLoss) {
-    const targetMove = Math.max(candleRange * (tfConfig.mult || 0.5), entry * tfConfig.minPct);
-    const slMove = Math.max(candleRange * (tfConfig.slMult || 2.0), entry * tfConfig.minSlPct);
-
-    if (isBullish) {
-      target = Number((entry + targetMove).toFixed(2));
-      stopLoss = Number((entry - slMove).toFixed(2));
-    } else {
-      target = Number((entry - targetMove).toFixed(2));
-      stopLoss = Number((entry + slMove).toFixed(2));
-    }
+  // Calculate high-probability target and stop loss strictly conforming to 50-100 pts rule for indices
+  const levelCalc = calculateTradeLevels(entry, isBullish, timeframe);
+  if (!target || !stopLoss || (entry >= 10000 && (Math.abs(target - entry) < 45 || Math.abs(target - entry) > 105 || Math.abs(entry - stopLoss) > 55))) {
+    target = levelCalc.target;
+    stopLoss = levelCalc.stopLoss;
   }
 
   const targetPoints = Math.abs(target - entry);
@@ -979,40 +1012,55 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   const tfConfig = TIMEFRAME_TARGET_HORIZONS[timeframe] || TIMEFRAME_TARGET_HORIZONS["1D"];
   const isAiBuy = analysis?.signal === "BUY";
   const isAiSell = analysis?.signal === "SELL";
-  const aiMovePct = isAiBuy ? tfConfig.minPct * 1.5 : isAiSell ? -tfConfig.minPct * 1.5 : 0;
-  const aiTarget = (isAiBuy || isAiSell) ? Number((latestPrice * (1 + aiMovePct)).toFixed(2)) : null;
-  const aiStopLoss = (isAiBuy || isAiSell) ? Number((latestPrice * (1 + (isAiBuy ? -tfConfig.minSlPct * 1.2 : tfConfig.minSlPct * 1.2))).toFixed(2)) : null;
-  const aiTargetPoints = aiTarget ? Number(Math.abs(aiTarget - latestPrice).toFixed(2)) : 0;
+  const aiTradeLevels = (isAiBuy || isAiSell) ? calculateTradeLevels(latestPrice, isAiBuy, timeframe) : null;
+  const aiTarget = aiTradeLevels ? aiTradeLevels.target : null;
+  const aiStopLoss = aiTradeLevels ? aiTradeLevels.stopLoss : null;
+  const aiTargetPoints = aiTradeLevels ? aiTradeLevels.tgtPts : 0;
 
   // Selected or latest pattern, with fallback to live market setup
   const patternsList = data?.detected_patterns || [];
-  const selectedPattern = (selectedPatternIndex !== null && patternsList[selectedPatternIndex])
+  const explicitlySelectedPattern = (selectedPatternIndex !== null && patternsList[selectedPatternIndex])
     ? patternsList[selectedPatternIndex]
-    : patternsList[patternsList.length - 1];
+    : null;
 
   const activePattern = useMemo(() => {
-    if (selectedPattern && selectedPattern.entry && selectedPattern.target) {
-      return selectedPattern;
+    // If user explicitly clicked on a historical pattern from the radar, show it with clear context
+    if (explicitlySelectedPattern && explicitlySelectedPattern.entry && explicitlySelectedPattern.target) {
+      return {
+        ...explicitlySelectedPattern,
+        is_historical_view: true
+      };
     }
     if (!data?.candles || data.candles.length === 0) return null;
 
-    // Synthesize live actionable market setup from current candle indicators
+    // By default, ALWAYS anchor the active trade setup to CURRENT LIVE PRICE!
+    // Never show an obsolete historical pattern from months/days ago as the active trade recommendation!
     const lastC = data.candles[data.candles.length - 1];
     const cPrice = displayedPrice || Number(lastC.close);
-    const emaVal = lastC.ema_50 || lastC.sma_20 || cPrice;
-    const isBull = cPrice >= emaVal;
-    const tgtDist = Math.max(cPrice * (tfConfig.mult || 0.5) * 0.01, 1.0);
-    const slDist = Math.max(cPrice * (tfConfig.slMult || 2.0) * 0.01, 2.0);
-    const tgt = isBull ? cPrice + tgtDist : cPrice - tgtDist;
-    const sl = isBull ? cPrice - slDist : cPrice + slDist;
+
+    // Check if there is an active pattern triggered right on the latest candle (within 0.8% of current price)
+    const recentPattern = patternsList.slice(-3).reverse().find(p => 
+      p && p.price && Math.abs(p.price - cPrice) / cPrice < 0.008
+    );
+
+    const isBull = recentPattern ? (recentPattern.recommendation === "BUY" || recentPattern.is_bullish)
+      : (analysis?.signal === "BUY" ? true : (analysis?.signal === "SELL" ? false : cPrice >= (lastC.ema_50 || lastC.sma_20 || cPrice)));
+
+    const levels = calculateTradeLevels(cPrice, isBull, timeframe);
+    const tgt = levels.target;
+    const sl = levels.stopLoss;
+    const tgtDist = levels.tgtPts;
+    const slDist = levels.slPts;
     const strike = calculateFnoStrike(cPrice);
     const opt = isBull ? "CE" : "PE";
+    const patternName = recentPattern ? recentPattern.pattern : (isBull ? "Bullish Trend Expansion" : "Bearish Breakdown Continuation");
 
     return {
-      pattern: isBull ? "EMA Trend Expansion" : "EMA Resistance Rejection",
+      pattern: patternName,
       recommendation: isBull ? "BUY" : "SELL",
       is_bullish: isBull,
       is_actionable: true,
+      is_live: true,
       time: lastC.time,
       price: cPrice,
       entry: Number(cPrice.toFixed(2)),
@@ -1023,7 +1071,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       sl_points: Number(slDist.toFixed(2)),
       sl_pct: ((slDist / cPrice) * 100).toFixed(2),
       risk_reward: (tgtDist / slDist).toFixed(1),
-      confidence: "HIGH",
+      confidence: recentPattern?.confidence || "HIGH",
       target_horizon: tfConfig.horizon,
       horizon_short: tfConfig.shortName,
       outcome: "ACTIVE",
@@ -1032,7 +1080,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       max_holding_days: tfConfig.horizon,
       pnl_points: 0
     };
-  }, [selectedPattern, data, displayedPrice, tfConfig]);
+  }, [explicitlySelectedPattern, data, displayedPrice, tfConfig, timeframe, analysis, patternsList]);
   const targetsHitCount = data?.accuracy_stats?.targets_hit !== undefined
     ? data.accuracy_stats.targets_hit
     : patternsList.filter(p => p.outcome === "TARGET_HIT").length;
@@ -1353,9 +1401,21 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                         backgroundColor: `${activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444")}15`,
                         borderColor: `${activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444")}35`
                       }}>
-                        ⚡ {activePattern.pattern} ({activePattern.recommendation})
+                        {activePattern.is_historical_view ? `📜 Historical: ${activePattern.pattern}` : `⚡ Live Trade: ${activePattern.pattern}`} ({activePattern.recommendation})
                       </span>
-                      <span className="text-[9px] font-mono text-gray-400">{activePattern.time}</span>
+                      {activePattern.is_historical_view ? (
+                        <button 
+                          onClick={() => setSelectedPatternIndex(null)}
+                          className="text-[9px] bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/40 font-bold transition-colors cursor-pointer"
+                        >
+                          Back to Live
+                        </button>
+                      ) : (
+                        <span className="text-[9px] font-mono text-emerald-400 font-bold flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                          LIVE
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1.5 mt-1 text-[9px] text-gray-400 font-medium">

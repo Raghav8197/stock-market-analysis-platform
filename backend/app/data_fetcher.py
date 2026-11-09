@@ -703,6 +703,14 @@ def analyze_and_package_stock(symbol: str, timeframe: str = "1D") -> Dict[str, A
         target_val = round(float(result["target"]), 2)
         sl_val = round(float(result["stop_loss"]), 2)
         target_pts = round(abs(target_val - entry_val), 2)
+        sl_pts = round(abs(entry_val - sl_val), 2)
+
+        # Enforce strict 50-100 points rule for index / high-value assets
+        if entry_val >= 10000:
+            if target_pts < 50.0 or target_pts > 100.0 or sl_pts > 55.0:
+                is_bull = result.get("is_bullish", rec == "BUY")
+                from app.patterns import calculate_trade_levels
+                target_val, sl_val, target_pts, sl_pts = calculate_trade_levels(entry_val, is_bull, timeframe)
 
         patterns_list.append({
             "time": time_val_p,
@@ -715,6 +723,7 @@ def analyze_and_package_stock(symbol: str, timeframe: str = "1D") -> Dict[str, A
             "target": target_val,
             "stop_loss": sl_val,
             "target_points": target_pts,
+            "sl_points": sl_pts,
             "target_horizon": result.get("target_horizon", "Target"),
             "confidence": result["confidence"],
             "outcome": result.get("outcome", "ACTIVE"),
