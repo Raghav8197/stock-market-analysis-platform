@@ -628,7 +628,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   const fetchChartData = async () => {
     setLoading(true);
     try {
-      const response = await api.get(`/api/stocks/${symbol}/history?timeframe=${timeframe}`);
+      const response = await api.get(`/api/stocks/${encodeURIComponent(symbol)}/history?timeframe=${timeframe}`);
       const rawData = response.data;
       if (rawData && rawData.candles) {
         const enrichedPatterns = (rawData.detected_patterns || []).map(p => enrichPatternWithLevels(p, rawData.candles, timeframe));
@@ -678,8 +678,9 @@ const ChartContainer = ({ symbol, setSymbol }) => {
     if (!data || !chartContainerRef.current) return;
 
     // 1. Setup Price & Indicator Chart
-    const priceChartWidth = chartContainerRef.current.clientWidth;
+    const priceChartWidth = Math.max(chartContainerRef.current.clientWidth || 0, 600);
     const priceChartHeight = 400;
+    const isIntraday = ["1m", "2m", "3m", "5m", "15m", "30m", "60m", "1h"].includes(timeframe);
 
     const chart = createChart(chartContainerRef.current, {
       width: priceChartWidth,
@@ -699,7 +700,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       },
       timeScale: {
         borderColor: "#1F2937",
-        timeVisible: ["1m", "2m", "3m", "5m", "15m", "30m", "60m", "1h"].includes(timeframe),
+        timeVisible: isIntraday,
         secondsVisible: false,
       },
       rightPriceScale: {
@@ -735,51 +736,51 @@ const ChartContainer = ({ symbol, setSymbol }) => {
     volumeSeriesRef.current = volumeSeries;
 
     // Map candle data
-    const candleData = data.candles.map(c => ({
+    const candleData = (data.candles || []).map(c => ({
       time: c.time,
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close
+      open: Number(c.open),
+      high: Number(c.high),
+      low: Number(c.low),
+      close: Number(c.close)
     }));
     candleSeries.setData(candleData);
 
-    const volumeData = data.candles.map(c => ({
+    const volumeData = (data.candles || []).map(c => ({
       time: c.time,
-      value: c.volume,
-      color: c.close >= c.open ? "rgba(16, 185, 129, 0.25)" : "rgba(239, 68, 68, 0.25)"
+      value: Number(c.volume || 0),
+      color: Number(c.close) >= Number(c.open) ? "rgba(16, 185, 129, 0.25)" : "rgba(239, 68, 68, 0.25)"
     }));
     volumeSeries.setData(volumeData);
 
     // Render Indicators
     if (showSMA20) {
       const smaData = data.candles
-        .filter(c => c.sma_20 !== null)
-        .map(c => ({ time: c.time, value: c.sma_20 }));
+        .filter(c => c.sma_20 !== null && c.sma_20 !== undefined)
+        .map(c => ({ time: c.time, value: Number(c.sma_20) }));
       sma20SeriesRef.current = chart.addSeries(LineSeries, { color: "#F59E0B", lineWidth: 1.5, title: "SMA 20" });
       sma20SeriesRef.current.setData(smaData);
     }
 
     if (showEMA50) {
       const emaData = data.candles
-        .filter(c => c.ema_50 !== null)
-        .map(c => ({ time: c.time, value: c.ema_50 }));
+        .filter(c => c.ema_50 !== null && c.ema_50 !== undefined)
+        .map(c => ({ time: c.time, value: Number(c.ema_50) }));
       ema50SeriesRef.current = chart.addSeries(LineSeries, { color: "#3B82F6", lineWidth: 1.5, title: "EMA 50" });
       ema50SeriesRef.current.setData(emaData);
     }
 
     if (showEMA200) {
       const emaData = data.candles
-        .filter(c => c.ema_200 !== null)
-        .map(c => ({ time: c.time, value: c.ema_200 }));
+        .filter(c => c.ema_200 !== null && c.ema_200 !== undefined)
+        .map(c => ({ time: c.time, value: Number(c.ema_200) }));
       ema200SeriesRef.current = chart.addSeries(LineSeries, { color: "#A855F7", lineWidth: 2, title: "EMA 200" });
       ema200SeriesRef.current.setData(emaData);
     }
 
     if (showBB) {
-      const bbUpper = data.candles.filter(c => c.bb_upper !== null).map(c => ({ time: c.time, value: c.bb_upper }));
-      const bbMiddle = data.candles.filter(c => c.bb_middle !== null).map(c => ({ time: c.time, value: c.bb_middle }));
-      const bbLower = data.candles.filter(c => c.bb_lower !== null).map(c => ({ time: c.time, value: c.bb_lower }));
+      const bbUpper = data.candles.filter(c => c.bb_upper !== null && c.bb_upper !== undefined).map(c => ({ time: c.time, value: Number(c.bb_upper) }));
+      const bbMiddle = data.candles.filter(c => c.bb_middle !== null && c.bb_middle !== undefined).map(c => ({ time: c.time, value: Number(c.bb_middle) }));
+      const bbLower = data.candles.filter(c => c.bb_lower !== null && c.bb_lower !== undefined).map(c => ({ time: c.time, value: Number(c.bb_lower) }));
       
       bbUpperSeriesRef.current = chart.addSeries(LineSeries, { color: "rgba(239, 68, 68, 0.5)", lineWidth: 1, lineStyle: 2, title: "BB Upper" });
       bbMiddleSeriesRef.current = chart.addSeries(LineSeries, { color: "rgba(245, 158, 11, 0.4)", lineWidth: 1, title: "BB Middle" });
@@ -792,15 +793,45 @@ const ChartContainer = ({ symbol, setSymbol }) => {
 
     // Render Pattern Markers
     if (data.detected_patterns && data.detected_patterns.length > 0) {
-      const markers = data.detected_patterns.map(p => ({
-        time: p.time,
-        position: p.position, // aboveBar or belowBar
-        color: p.color,
-        shape: p.position === "belowBar" ? "arrowUp" : "arrowDown",
-        text: p.pattern.replace("_", " ").toUpperCase(),
-        size: 1.5
-      }));
-      createSeriesMarkers(candleSeries, markers);
+      try {
+        const validCandleTimes = new Set(candleData.map(c => c.time));
+        const markerMap = new Map();
+
+        data.detected_patterns.forEach(p => {
+          if (!p.time || !validCandleTimes.has(p.time)) return;
+          const existing = markerMap.get(p.time);
+          if (!existing) {
+            markerMap.set(p.time, p);
+          } else {
+            const confRank = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+            if ((confRank[p.confidence] || 0) > (confRank[existing.confidence] || 0)) {
+              markerMap.set(p.time, p);
+            }
+          }
+        });
+
+        const sortedPatterns = Array.from(markerMap.values()).sort((a, b) => {
+          if (typeof a.time === "number" && typeof b.time === "number") {
+            return a.time - b.time;
+          }
+          return String(a.time).localeCompare(String(b.time));
+        });
+
+        const markers = sortedPatterns.map(p => ({
+          time: p.time,
+          position: p.position === "belowBar" ? "belowBar" : "aboveBar",
+          color: p.color || (p.recommendation === "BUY" ? "#10B981" : "#EF4444"),
+          shape: p.position === "belowBar" ? "arrowUp" : "arrowDown",
+          text: (p.pattern || "PATTERN").replace(/_/g, " ").toUpperCase(),
+          size: 1.5
+        }));
+
+        if (markers.length > 0) {
+          createSeriesMarkers(candleSeries, markers);
+        }
+      } catch (err) {
+        console.warn("Failed to create pattern markers:", err);
+      }
 
       // Draw Entry / Target / Stop Loss price lines for selected or latest pattern ONLY IF CONFIRMED
       const currencySym = isIndianSymbol(symbol) ? "₹" : "$";
@@ -809,37 +840,50 @@ const ChartContainer = ({ symbol, setSymbol }) => {
         : data.detected_patterns[data.detected_patterns.length - 1];
 
       if (activeP && activeP.is_actionable !== false && (activeP.recommendation === 'BUY' || activeP.recommendation === 'SELL') && activeP.confidence !== 'LOW' && activeP.entry && activeP.target && activeP.stop_loss) {
-        const isBuy = activeP.recommendation === 'BUY';
+        try {
+          const isBuy = activeP.recommendation === 'BUY';
+          const entryVal = Number(activeP.entry);
+          const targetVal = Number(activeP.target);
+          const slVal = Number(activeP.stop_loss);
 
-        // Entry line (yellow/gold dashed)
-        candleSeries.createPriceLine({
-          price: activeP.entry,
-          color: '#FBBF24',
-          lineWidth: 2,
-          lineStyle: 2, // Dashed
-          axisLabelVisible: true,
-          title: `▶ ${isBuy ? 'BUY HERE' : 'SELL HERE'} (${timeframe}): ${currencySym}${activeP.entry}`,
-        });
+          if (!isNaN(entryVal) && isFinite(entryVal)) {
+            // Entry line (yellow/gold dashed)
+            candleSeries.createPriceLine({
+              price: entryVal,
+              color: '#FBBF24',
+              lineWidth: 2,
+              lineStyle: 2, // Dashed
+              axisLabelVisible: true,
+              title: `▶ ${isBuy ? 'BUY HERE' : 'SELL HERE'} (${timeframe}): ${currencySym}${activeP.entry}`,
+            });
+          }
 
-        // Target line (green for BUY, red for SELL)
-        candleSeries.createPriceLine({
-          price: activeP.target,
-          color: isBuy ? '#10B981' : '#EF4444',
-          lineWidth: 2,
-          lineStyle: 2,
-          axisLabelVisible: true,
-          title: `🎯 ${activeP.target_horizon || 'EXIT TARGET'}: ${currencySym}${activeP.target} (${isBuy ? '+' : '-'}${activeP.target_points} pts)`,
-        });
+          if (!isNaN(targetVal) && isFinite(targetVal)) {
+            // Target line (green for BUY, red for SELL)
+            candleSeries.createPriceLine({
+              price: targetVal,
+              color: isBuy ? '#10B981' : '#EF4444',
+              lineWidth: 2,
+              lineStyle: 2,
+              axisLabelVisible: true,
+              title: `🎯 ${activeP.target_horizon || 'EXIT TARGET'}: ${currencySym}${activeP.target} (${isBuy ? '+' : '-'}${activeP.target_points} pts)`,
+            });
+          }
 
-        // Stop Loss line (red for BUY, green for SELL)
-        candleSeries.createPriceLine({
-          price: activeP.stop_loss,
-          color: isBuy ? '#EF4444' : '#10B981',
-          lineWidth: 2,
-          lineStyle: 2,
-          axisLabelVisible: true,
-          title: `⛔ STOP LOSS: ${currencySym}${activeP.stop_loss} (${isBuy ? '-' : '+'}${activeP.sl_points} pts)`,
-        });
+          if (!isNaN(slVal) && isFinite(slVal)) {
+            // Stop Loss line (red for BUY, green for SELL)
+            candleSeries.createPriceLine({
+              price: slVal,
+              color: isBuy ? '#EF4444' : '#10B981',
+              lineWidth: 2,
+              lineStyle: 2,
+              axisLabelVisible: true,
+              title: `⛔ STOP LOSS: ${currencySym}${activeP.stop_loss} (${isBuy ? '-' : '+'}${activeP.sl_points} pts)`,
+            });
+          }
+        } catch (err) {
+          console.warn("Failed to create price lines:", err);
+        }
       }
     }
 
@@ -859,6 +903,8 @@ const ChartContainer = ({ symbol, setSymbol }) => {
         },
         timeScale: {
           visible: false, // hide time scale, synchronize it with main chart
+          timeVisible: isIntraday,
+          secondsVisible: false,
         },
         rightPriceScale: {
           borderColor: "#1F2937",
@@ -875,8 +921,8 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       rsiSeriesRef.current = rsiSeries;
 
       const rsiData = data.candles
-        .filter(c => c.rsi !== null)
-        .map(c => ({ time: c.time, value: c.rsi }));
+        .filter(c => c.rsi !== null && c.rsi !== undefined && !isNaN(Number(c.rsi)))
+        .map(c => ({ time: c.time, value: Number(c.rsi) }));
       rsiSeries.setData(rsiData);
     }
 
@@ -896,6 +942,8 @@ const ChartContainer = ({ symbol, setSymbol }) => {
         },
         timeScale: {
           visible: false, // hide time scale, synchronize it with main chart
+          timeVisible: isIntraday,
+          secondsVisible: false,
         },
         rightPriceScale: {
           borderColor: "#1F2937",
@@ -911,8 +959,8 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       });
       macdLineSeriesRef.current = macdLineSeries;
       const macdLineData = data.candles
-        .filter(c => c.macd !== null)
-        .map(c => ({ time: c.time, value: c.macd }));
+        .filter(c => c.macd !== null && c.macd !== undefined && !isNaN(Number(c.macd)))
+        .map(c => ({ time: c.time, value: Number(c.macd) }));
       macdLineSeries.setData(macdLineData);
 
       // Add Signal line
@@ -923,8 +971,8 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       });
       macdSignalSeriesRef.current = macdSignalSeries;
       const macdSignalData = data.candles
-        .filter(c => c.macd_signal !== null)
-        .map(c => ({ time: c.time, value: c.macd_signal }));
+        .filter(c => c.macd_signal !== null && c.macd_signal !== undefined && !isNaN(Number(c.macd_signal)))
+        .map(c => ({ time: c.time, value: Number(c.macd_signal) }));
       macdSignalSeries.setData(macdSignalData);
 
       // Add Histogram
@@ -933,11 +981,11 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       });
       macdHistSeriesRef.current = macdHistSeries;
       const macdHistData = data.candles
-        .filter(c => c.macd_hist !== null)
+        .filter(c => c.macd_hist !== null && c.macd_hist !== undefined && !isNaN(Number(c.macd_hist)))
         .map(c => ({
           time: c.time,
-          value: c.macd_hist,
-          color: c.macd_hist >= 0 ? "rgba(16, 185, 129, 0.5)" : "rgba(239, 68, 68, 0.5)"
+          value: Number(c.macd_hist),
+          color: Number(c.macd_hist) >= 0 ? "rgba(16, 185, 129, 0.5)" : "rgba(239, 68, 68, 0.5)"
         }));
       macdHistSeries.setData(macdHistData);
     }
@@ -953,22 +1001,31 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       ts.subscribeVisibleTimeRangeChange(() => {
         if (isSyncing) return;
         isSyncing = true;
-        const range = ts.getVisibleRange();
-        if (range) {
-          activeTimeScales.forEach((otherTs, otherIdx) => {
-            if (idx !== otherIdx) {
-              otherTs.setVisibleRange(range);
-            }
-          });
+        try {
+          const range = ts.getVisibleRange();
+          if (range && range.from != null && range.to != null) {
+            activeTimeScales.forEach((otherTs, otherIdx) => {
+              if (idx !== otherIdx) {
+                try {
+                  otherTs.setVisibleRange(range);
+                } catch (e) {
+                  // Harmless range difference during init or data warm-up
+                }
+              }
+            });
+          }
+        } catch (e) {
+          // ignore
+        } finally {
+          isSyncing = false;
         }
-        isSyncing = false;
       });
     });
 
     // Handles resizing
     const handleResize = () => {
       if (chartContainerRef.current) {
-        const w = chartContainerRef.current.clientWidth;
+        const w = Math.max(chartContainerRef.current.clientWidth || 0, 600);
         chart.resize(w, priceChartHeight);
         if (rsiChart) {
           rsiChart.resize(w, 120);
@@ -982,18 +1039,36 @@ const ChartContainer = ({ symbol, setSymbol }) => {
 
     return () => {
       window.removeEventListener("resize", handleResize);
-      chart.remove();
+      try {
+        chart.remove();
+      } catch (e) {}
       if (rsiChart) {
-        rsiChart.remove();
+        try {
+          rsiChart.remove();
+        } catch (e) {}
       }
       if (macdChart) {
-        macdChart.remove();
+        try {
+          macdChart.remove();
+        } catch (e) {}
       }
       chartRef.current = null;
+      candleSeriesRef.current = null;
+      volumeSeriesRef.current = null;
+      sma20SeriesRef.current = null;
+      ema50SeriesRef.current = null;
+      ema200SeriesRef.current = null;
+      bbUpperSeriesRef.current = null;
+      bbMiddleSeriesRef.current = null;
+      bbLowerSeriesRef.current = null;
       rsiChartRef.current = null;
+      rsiSeriesRef.current = null;
       macdChartRef.current = null;
+      macdLineSeriesRef.current = null;
+      macdSignalSeriesRef.current = null;
+      macdHistSeriesRef.current = null;
     };
-  }, [data, showSMA20, showEMA50, showEMA200, showBB, showRSI, showMACD, selectedPatternIndex]);
+  }, [data, timeframe, showSMA20, showEMA50, showEMA200, showBB, showRSI, showMACD, selectedPatternIndex]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
