@@ -157,6 +157,19 @@ def get_stock_analysis(
 
 @router.get("/search")
 def search_stocks(q: str = Query(..., min_length=1, description="Search query")):
+    q_clean = q.strip().upper()
+    mcx_commodities = [
+        {"symbol": "GOLD", "name": "MCX Gold (10g) in INR", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "SILVER", "name": "MCX Silver (1kg) in INR", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "CRUDEOIL", "name": "MCX Crude Oil in INR", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "NATURALGAS", "name": "MCX Natural Gas in INR", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "COPPER", "name": "MCX Copper (1kg) in INR", "exchange": "MCX", "type": "Commodity"},
+    ]
+    matched_mcx = [
+        c for c in mcx_commodities
+        if q_clean in c["symbol"] or q_clean in c["name"].upper() or q_clean in ["MCX", "COMMODITY", "OIL", "GAS", "BULLION"]
+    ]
+
     try:
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(q)}&newsCount=0"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -164,10 +177,12 @@ def search_stocks(q: str = Query(..., min_length=1, description="Search query"))
             data = json.loads(response.read().decode())
             
         quotes = data.get("quotes", [])
-        results = []
+        results = list(matched_mcx)
+        existing_syms = {c["symbol"] for c in results}
+        
         for quote in quotes:
             symbol = quote.get("symbol")
-            if not symbol:
+            if not symbol or symbol in existing_syms:
                 continue
                 
             quote_type = quote.get("quoteType", "")

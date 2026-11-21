@@ -46,15 +46,28 @@ COMMODITY_SYMBOLS = {"GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"}
 
 # Multipliers to convert international USD futures to Indian MCX INR specifications
 COMMODITY_INR_MULTIPLIERS = {
-    "GOLD": 29.135,       # (GC=F USD/oz / 31.1035g) * 10g * 85.5 * 1.06 -> MCX Gold 10g in ₹ INR
-    "SILVER": 2913.5,     # (SI=F USD/oz * 32.1507oz/kg) * 85.5 * 1.06 -> MCX Silver 1kg in ₹ INR
-    "CRUDEOIL": 85.5,     # CL=F USD/bbl * 85.5 -> MCX Crude Oil 1bbl in ₹ INR
-    "NATURALGAS": 85.5,   # NG=F USD/mmBtu * 85.5 -> MCX Natural Gas 1mmBtu in ₹ INR
-    "COPPER": 188.5       # HG=F USD/lb * 2.20462 lb/kg * 85.5 -> MCX Copper 1kg in ₹ INR
+    "GOLD": 30.15,        # (GC=F COMEX USD/oz) * 30.15 -> MCX Gold 10g in ₹ INR (~₹1,22,500 - ₹1,24,000)
+    "SILVER": 3030.0,     # (SI=F COMEX USD/oz) * 3030.0 -> MCX Silver 1kg in ₹ INR (~₹1,51,000 - ₹1,53,000)
+    "CRUDEOIL": 86.75,    # (CL=F WTI USD/bbl) * 86.75 -> MCX Crude Oil 1bbl in ₹ INR (~₹7,650 - ₹7,750)
+    "NATURALGAS": 86.55,  # (NG=F Henry Hub USD/mmBtu) * 86.55 -> MCX Natural Gas 1mmBtu in ₹ INR (~₹300 - ₹308)
+    "COPPER": 190.0       # (HG=F COMEX USD/lb) * 190.0 -> MCX Copper 1kg in ₹ INR (~₹1,150 - ₹1,165)
 }
+
+def clean_commodity_symbol(symbol: str) -> str:
+    """Normalize any commodity alias (e.g. MCX:GOLD, GOLD.MCX, MCX_GOLD) to standard key."""
+    if not symbol:
+        return ""
+    s = symbol.upper().replace("MCX:", "").replace(".MCX", "").replace("MCX_", "").strip()
+    if s.startswith("MCX") and len(s) > 3:
+        s = s[3:].strip()
+    return s
 
 def resolve_ticker(symbol: str) -> str:
     """Resolve user-friendly symbol to yfinance ticker symbol."""
+    clean = clean_commodity_symbol(symbol)
+    if clean in TICKER_MAP:
+        return TICKER_MAP[clean]
+        
     upper_sym = symbol.upper()
     if upper_sym in TICKER_MAP:
         return TICKER_MAP[upper_sym]
@@ -117,15 +130,15 @@ def fetch_history(symbol: str, timeframe: str = "1D", limit: int = 250) -> pd.Da
                 df[col] = df[col].astype(float)
 
         # Convert commodity prices to Indian MCX Rupees (INR)
-        upper_sym = symbol.upper()
-        multiplier = COMMODITY_INR_MULTIPLIERS.get(upper_sym)
+        clean_sym = clean_commodity_symbol(symbol)
+        multiplier = COMMODITY_INR_MULTIPLIERS.get(clean_sym)
         if multiplier:
             for col in ["Open", "High", "Low", "Close"]:
                 if col in df.columns:
                     df[col] = (df[col] * multiplier).round(2)
                 
         # Fill standard indices
-        df.attrs["symbol"] = ticker_symbol
+        df.attrs["symbol"] = clean_sym if clean_sym in COMMODITY_SYMBOLS else ticker_symbol
         return df.tail(limit)
         
     except Exception as e:
@@ -158,11 +171,11 @@ def fetch_fundamentals(symbol: str) -> Dict[str, Any]:
 
     if upper_sym in COMMODITY_SYMBOLS or ticker_symbol in ["GC=F", "SI=F", "CL=F", "NG=F", "HG=F"]:
         commodity_specs = {
-            "GOLD": {"name": "MCX Gold (10g) in INR", "unit": "10 Grams", "base": 78500.0},
-            "SILVER": {"name": "MCX Silver (1kg) in INR", "unit": "1 Kilogram", "base": 92400.0},
-            "CRUDEOIL": {"name": "MCX Crude Oil in INR", "unit": "1 Barrel (bbl)", "base": 6850.0},
-            "NATURALGAS": {"name": "MCX Natural Gas in INR", "unit": "1 mmBtu", "base": 245.0},
-            "COPPER": {"name": "MCX Copper (1kg) in INR", "unit": "1 Kilogram", "base": 845.0},
+            "GOLD": {"name": "MCX Gold (10g) in INR", "unit": "10 Grams", "base": 122500.0},
+            "SILVER": {"name": "MCX Silver (1kg) in INR", "unit": "1 Kilogram", "base": 151800.0},
+            "CRUDEOIL": {"name": "MCX Crude Oil in INR", "unit": "1 Barrel (bbl)", "base": 7720.0},
+            "NATURALGAS": {"name": "MCX Natural Gas in INR", "unit": "1 mmBtu", "base": 303.0},
+            "COPPER": {"name": "MCX Copper (1kg) in INR", "unit": "1 Kilogram", "base": 1155.0},
         }
         spec = commodity_specs.get(upper_sym, {"name": f"MCX {upper_sym}", "unit": "Standard Contract", "base": 1000.0})
         b = spec["base"]
@@ -397,15 +410,15 @@ def generate_mock_history(symbol: str, timeframe: str, limit: int) -> pd.DataFra
     elif symbol in ["TCS", "INFY"]:
         base_price = 3500.0
     elif upper_sym in ["GOLD", "GC=F"]:
-        base_price = 78500.0
+        base_price = 122500.0
     elif upper_sym in ["SILVER", "SI=F"]:
-        base_price = 92400.0
+        base_price = 151800.0
     elif upper_sym in ["CRUDEOIL", "CL=F"]:
-        base_price = 6850.0
+        base_price = 7720.0
     elif upper_sym in ["NATURALGAS", "NG=F"]:
-        base_price = 245.0
+        base_price = 303.0
     elif upper_sym in ["COPPER", "HG=F"]:
-        base_price = 845.0
+        base_price = 1155.0
         
     dates = []
     curr_time = datetime.now()
@@ -644,16 +657,16 @@ def get_live_ticker_price(symbol: str) -> float:
         "BANKNIFTY": 48200.20,
         "GIFTNIFTY": 22530.10,
         "SENSEX": 73800.40,
-        "GOLD": 78500.00,
-        "SILVER": 92400.00,
-        "CRUDEOIL": 6850.00,
-        "NATURALGAS": 245.00,
-        "COPPER": 845.00,
-        "GC=F": 78500.00,
-        "SI=F": 92400.00,
-        "CL=F": 6850.00,
-        "NG=F": 245.00,
-        "HG=F": 845.00,
+        "GOLD": 122500.00,
+        "SILVER": 151800.00,
+        "CRUDEOIL": 7720.00,
+        "NATURALGAS": 303.00,
+        "COPPER": 1155.00,
+        "GC=F": 122500.00,
+        "SI=F": 151800.00,
+        "CL=F": 7720.00,
+        "NG=F": 303.00,
+        "HG=F": 1155.00,
         "NASDAQ": 16400.30,
         "NYSE": 17800.10,
         "SP500": 5200.40,
@@ -704,8 +717,8 @@ def get_live_ticker_price(symbol: str) -> float:
                 price = None
             else:
                 # Convert commodity prices to Indian MCX Rupees (INR)
-                upper_sym = symbol.upper()
-                mult = COMMODITY_INR_MULTIPLIERS.get(upper_sym)
+                clean_sym = clean_commodity_symbol(symbol)
+                mult = COMMODITY_INR_MULTIPLIERS.get(clean_sym)
                 if mult:
                     val = val * mult
                 price = val

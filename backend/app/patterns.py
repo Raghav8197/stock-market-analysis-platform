@@ -289,15 +289,69 @@ def calculate_fno_strike(price: float) -> float:
         step = 0.5
     return round(round(price / step) * step, 2)
 
-def calculate_trade_levels(entry: float, is_bullish: bool, timeframe: str) -> tuple:
+def calculate_trade_levels(entry: float, is_bullish: bool, timeframe: str, symbol: str = None) -> tuple:
     """
     Calculate high-probability intraday and swing targets & stop losses.
-    For index / high-value assets (price >= 10,000 like NIFTY, BANKNIFTY),
-    targets are strictly calibrated within 50 to 100 points.
+    For MCX Commodities, scales to actual Indian commodity point movements.
+    For Indian indices (NIFTY, BANKNIFTY), targets are strictly calibrated within 50 to 100 points.
     """
     p = float(entry)
-    if p >= 10000:
-        # Strictly calibrated within 50 - 100 points for indices/F&O
+    s = (symbol or "").upper().replace("MCX:", "").replace(".MCX", "").replace("MCX_", "").strip()
+    if s.startswith("MCX") and len(s) > 3:
+        s = s[3:].strip()
+
+    if s == "GOLD":
+        if timeframe in ["1m", "2m"]:
+            tgt_pts = 120.0
+        elif timeframe in ["3m", "5m"]:
+            tgt_pts = 180.0
+        elif timeframe in ["15m", "30m"]:
+            tgt_pts = 250.0
+        else:
+            tgt_pts = 350.0
+        sl_pts = round(tgt_pts / 2.0, 1)
+    elif s == "SILVER":
+        if timeframe in ["1m", "2m"]:
+            tgt_pts = 300.0
+        elif timeframe in ["3m", "5m"]:
+            tgt_pts = 450.0
+        elif timeframe in ["15m", "30m"]:
+            tgt_pts = 650.0
+        else:
+            tgt_pts = 900.0
+        sl_pts = round(tgt_pts / 2.0, 1)
+    elif s == "CRUDEOIL":
+        if timeframe in ["1m", "2m"]:
+            tgt_pts = 30.0
+        elif timeframe in ["3m", "5m"]:
+            tgt_pts = 45.0
+        elif timeframe in ["15m", "30m"]:
+            tgt_pts = 65.0
+        else:
+            tgt_pts = 85.0
+        sl_pts = round(tgt_pts / 2.0, 1)
+    elif s == "NATURALGAS":
+        if timeframe in ["1m", "2m"]:
+            tgt_pts = 3.0
+        elif timeframe in ["3m", "5m"]:
+            tgt_pts = 4.5
+        elif timeframe in ["15m", "30m"]:
+            tgt_pts = 6.5
+        else:
+            tgt_pts = 9.0
+        sl_pts = round(tgt_pts / 2.0, 2)
+    elif s == "COPPER":
+        if timeframe in ["1m", "2m"]:
+            tgt_pts = 6.0
+        elif timeframe in ["3m", "5m"]:
+            tgt_pts = 9.0
+        elif timeframe in ["15m", "30m"]:
+            tgt_pts = 14.0
+        else:
+            tgt_pts = 20.0
+        sl_pts = round(tgt_pts / 2.0, 2)
+    elif p >= 10000:
+        # Strictly calibrated within 50 - 100 points for indices (NIFTY, BANKNIFTY)
         if timeframe in ["1m", "2m"]:
             tgt_pts = 50.0
             sl_pts = 25.0
@@ -360,6 +414,7 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
     option strike recommendations (CE/PE), and volatility-buffered targets.
     """
     results: List[Dict[str, Any]] = []
+    sym = str(df.attrs.get("symbol", "")).upper()
     close = df["Close"]
     n = len(df)
     horizon = TIMEFRAME_TARGET_HORIZONS.get(timeframe, "Target")
@@ -411,7 +466,7 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
 
                 if neckline_val > max(val1, val2) * 1.02:
                     c2 = float(close.iloc[i2])
-                    target, sl, tgt_pts, sl_pts = calculate_trade_levels(c2, True, timeframe)
+                    target, sl, tgt_pts, sl_pts = calculate_trade_levels(c2, True, timeframe, symbol=sym)
                     results.append({
                         "bar_index": i2,
                         "pattern": "Double Bottom (W-Pattern)",
@@ -441,7 +496,7 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
 
                 if neckline_val < min(val1, val2) * 0.98:
                     c2 = float(close.iloc[i2])
-                    target, sl, tgt_pts, sl_pts = calculate_trade_levels(c2, False, timeframe)
+                    target, sl, tgt_pts, sl_pts = calculate_trade_levels(c2, False, timeframe, symbol=sym)
                     results.append({
                         "bar_index": i2,
                         "pattern": "Double Top (M-Pattern)",
@@ -476,7 +531,7 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
 
                     if trough1_val < min(val_ls, val_hd) and trough2_val < min(val_rs, val_hd):
                         c3 = float(close.iloc[i3])
-                        target, sl, tgt_pts, sl_pts = calculate_trade_levels(c3, False, timeframe)
+                        target, sl, tgt_pts, sl_pts = calculate_trade_levels(c3, False, timeframe, symbol=sym)
                         results.append({
                             "bar_index": i3,
                             "pattern": "Head & Shoulders",
@@ -538,25 +593,25 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
         is_bb_bounce = (l <= cur_bbl * 1.002 and c > o and cur_rsi <= 38)
 
         if is_ema_bounce:
-            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe, symbol=sym)
             sig = ("EMA 20 Support Bounce", True, c, target, sl, tgt_pts, sl_pts, "HIGH", l)
         elif is_breakout:
-            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe, symbol=sym)
             sig = ("Bullish Momentum Breakout", True, c, target, sl, tgt_pts, sl_pts, "HIGH", l)
         elif is_bull_engulf:
-            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe, symbol=sym)
             sig = ("Bullish Engulfing", True, c, target, sl, tgt_pts, sl_pts, "HIGH", l)
         elif m_star:
-            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe, symbol=sym)
             sig = ("Morning Star", True, c, target, sl, tgt_pts, sl_pts, "HIGH", l)
         elif is_hammer:
-            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe, symbol=sym)
             sig = ("Hammer", True, c, target, sl, tgt_pts, sl_pts, "MEDIUM", l)
         elif is_macd_bull:
-            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe, symbol=sym)
             sig = ("Bullish MACD Cross", True, c, target, sl, tgt_pts, sl_pts, "MEDIUM", l)
         elif is_bb_bounce:
-            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe)
+            target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, True, timeframe, symbol=sym)
             sig = ("Bollinger Oversold Reversal", True, c, target, sl, tgt_pts, sl_pts, "HIGH", l)
 
         # ── High-Probability Bearish Setups ─────────────────────────
@@ -570,25 +625,25 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
             is_bb_reject = (h >= cur_bbu * 0.998 and c < o and cur_rsi >= 62)
 
             if is_ema_reject:
-                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe, symbol=sym)
                 sig = ("EMA 20 Resistance Rejection", False, c, target, sl, tgt_pts, sl_pts, "HIGH", h)
             elif is_breakdown:
-                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe, symbol=sym)
                 sig = ("Bearish Momentum Breakdown", False, c, target, sl, tgt_pts, sl_pts, "HIGH", h)
             elif is_bear_engulf:
-                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe, symbol=sym)
                 sig = ("Bearish Engulfing", False, c, target, sl, tgt_pts, sl_pts, "HIGH", h)
             elif e_star:
-                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe, symbol=sym)
                 sig = ("Evening Star", False, c, target, sl, tgt_pts, sl_pts, "HIGH", h)
             elif is_star:
-                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe, symbol=sym)
                 sig = ("Shooting Star", False, c, target, sl, tgt_pts, sl_pts, "MEDIUM", h)
             elif is_macd_bear:
-                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe, symbol=sym)
                 sig = ("Bearish MACD Cross", False, c, target, sl, tgt_pts, sl_pts, "MEDIUM", h)
             elif is_bb_reject:
-                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe)
+                target, sl, tgt_pts, sl_pts = calculate_trade_levels(c, False, timeframe, symbol=sym)
                 sig = ("Bollinger Overbought Reversal", False, c, target, sl, tgt_pts, sl_pts, "HIGH", h)
 
         if sig:
@@ -624,7 +679,22 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
         opt_type = "CE" if is_bullish else "PE"
         strike_fmt = int(atm_strike) if atm_strike.is_integer() else atm_strike
         fno_strike_str = f"{strike_fmt} {opt_type}"
-        fno_instrument = f"BUY {fno_strike_str} / {'BUY' if is_bullish else 'SHORT'} FUTURE"
+        clean_s = sym.replace("MCX:", "").replace(".MCX", "").replace("MCX_", "").strip()
+        if clean_s.startswith("MCX") and len(clean_s) > 3:
+            clean_s = clean_s[3:].strip()
+            
+        if clean_s == "GOLD":
+            fno_instrument = f"MCX GOLD {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 10g FUT"
+        elif clean_s == "SILVER":
+            fno_instrument = f"MCX SILVER {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 1kg FUT"
+        elif clean_s == "CRUDEOIL":
+            fno_instrument = f"MCX CRUDEOIL {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 100bbl FUT"
+        elif clean_s == "NATURALGAS":
+            fno_instrument = f"MCX NATURALGAS {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} FUT"
+        elif clean_s == "COPPER":
+            fno_instrument = f"MCX COPPER {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} FUT"
+        else:
+            fno_instrument = f"BUY {fno_strike_str} / {'BUY' if is_bullish else 'SHORT'} FUTURE"
         # Formatted holding label matching timeframe
         if timeframe == "1m":
             holding_label = "Within 5 Mins (Same Day)"

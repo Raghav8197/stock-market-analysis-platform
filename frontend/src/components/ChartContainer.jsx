@@ -15,12 +15,76 @@ const isIndianSymbol = (symbol) => {
   );
 };
 
+const COMMODITY_SPECS = {
+  GOLD: {
+    name: "Gold",
+    fullName: "MCX Gold (10g)",
+    unit: "₹ per 10 Grams",
+    exchange: "MCX India",
+    lot: "1 kg (Regular) / 100g (Mini)",
+    tick: "₹1.00",
+    fno: "MCX GOLD 10g FUT",
+    hours: "09:00 - 23:30 IST"
+  },
+  SILVER: {
+    name: "Silver",
+    fullName: "MCX Silver (1kg)",
+    unit: "₹ per 1 Kilogram",
+    exchange: "MCX India",
+    lot: "30 kg (Regular) / 5 kg (Mini)",
+    tick: "₹1.00",
+    fno: "MCX SILVER 1kg FUT",
+    hours: "09:00 - 23:30 IST"
+  },
+  CRUDEOIL: {
+    name: "Crude Oil",
+    fullName: "MCX Crude Oil (1 bbl)",
+    unit: "₹ per 1 Barrel (bbl)",
+    exchange: "MCX India",
+    lot: "100 Barrels (Regular) / 10 Barrels (Mini)",
+    tick: "₹1.00",
+    fno: "MCX CRUDEOIL 100bbl FUT",
+    hours: "09:00 - 23:30 IST"
+  },
+  NATURALGAS: {
+    name: "Natural Gas",
+    fullName: "MCX Natural Gas (mmBtu)",
+    unit: "₹ per 1 mmBtu",
+    exchange: "MCX India",
+    lot: "1,250 mmBtu",
+    tick: "₹0.10",
+    fno: "MCX NATURALGAS FUT",
+    hours: "09:00 - 23:30 IST"
+  },
+  COPPER: {
+    name: "Copper",
+    fullName: "MCX Copper (1kg)",
+    unit: "₹ per 1 Kilogram",
+    exchange: "MCX India",
+    lot: "2,500 kg (Regular) / 250 kg (Mini)",
+    tick: "₹0.05",
+    fno: "MCX COPPER 2500kg FUT",
+    hours: "09:00 - 23:30 IST"
+  }
+};
+
+const cleanCommodityKey = (sym) => {
+  if (!sym) return "";
+  const s = String(sym).toUpperCase().replace("MCX:", "").replace(".MCX", "").replace("MCX_", "").trim();
+  return s.startsWith("MCX") && s.length > 3 ? s.slice(3).trim() : s;
+};
+
 const SEARCH_DATABASE = [
-  { symbol: "GOLD", name: "MCX Gold (10g) in INR", market: "Commodity (INR)" },
-  { symbol: "SILVER", name: "MCX Silver (1kg) in INR", market: "Commodity (INR)" },
-  { symbol: "CRUDEOIL", name: "MCX Crude Oil (bbl) in INR", market: "Commodity (INR)" },
-  { symbol: "NATURALGAS", name: "MCX Natural Gas in INR", market: "Commodity (INR)" },
-  { symbol: "COPPER", name: "MCX Copper (1kg) in INR", market: "Commodity (INR)" },
+  { symbol: "GOLD", name: "MCX Gold (10g) in INR", market: "MCX (INR)" },
+  { symbol: "SILVER", name: "MCX Silver (1kg) in INR", market: "MCX (INR)" },
+  { symbol: "CRUDEOIL", name: "MCX Crude Oil (bbl) in INR", market: "MCX (INR)" },
+  { symbol: "NATURALGAS", name: "MCX Natural Gas in INR", market: "MCX (INR)" },
+  { symbol: "COPPER", name: "MCX Copper (1kg) in INR", market: "MCX (INR)" },
+  { symbol: "MCX:GOLD", name: "MCX Gold (10g) in INR", market: "MCX (INR)" },
+  { symbol: "MCX:SILVER", name: "MCX Silver (1kg) in INR", market: "MCX (INR)" },
+  { symbol: "MCX:CRUDEOIL", name: "MCX Crude Oil (bbl) in INR", market: "MCX (INR)" },
+  { symbol: "MCX:NATURALGAS", name: "MCX Natural Gas in INR", market: "MCX (INR)" },
+  { symbol: "MCX:COPPER", name: "MCX Copper (1kg) in INR", market: "MCX (INR)" },
   { symbol: "AAPL", name: "Apple Inc.", market: "US" },
   { symbol: "MSFT", name: "Microsoft Corp.", market: "US" },
   { symbol: "TSLA", name: "Tesla Inc.", market: "US" },
@@ -60,9 +124,15 @@ import {
   Maximize2
 } from "lucide-react";
 
-const calculateFnoStrike = (price) => {
+const calculateFnoStrike = (price, sym = "") => {
+  const s = cleanCommodityKey(sym);
   let step = 0.5;
-  if (price >= 20000) step = 100;
+  if (s === "GOLD") step = 100;
+  else if (s === "SILVER") step = 500;
+  else if (s === "CRUDEOIL") step = 50;
+  else if (s === "NATURALGAS") step = 5;
+  else if (s === "COPPER") step = 5;
+  else if (price >= 20000) step = 100;
   else if (price >= 10000) step = 50;
   else if (price >= 2000) step = 20;
   else if (price >= 500) step = 10;
@@ -72,10 +142,27 @@ const calculateFnoStrike = (price) => {
   return Number.isInteger(rounded) ? rounded : Number(rounded.toFixed(2));
 };
 
-const calculateTradeLevels = (entry, isBullish, tf = "5m") => {
+const calculateTradeLevels = (entry, isBullish, tf = "5m", sym = "") => {
   const p = Number(entry);
+  const s = cleanCommodityKey(sym);
   let tgtPts, slPts;
-  if (p >= 10000) {
+
+  if (s === "GOLD") {
+    tgtPts = tf === "1m" || tf === "2m" ? 120.0 : tf === "3m" || tf === "5m" ? 180.0 : tf === "15m" || tf === "30m" ? 250.0 : 350.0;
+    slPts = Math.round(tgtPts / 2.0);
+  } else if (s === "SILVER") {
+    tgtPts = tf === "1m" || tf === "2m" ? 300.0 : tf === "3m" || tf === "5m" ? 450.0 : tf === "15m" || tf === "30m" ? 650.0 : 900.0;
+    slPts = Math.round(tgtPts / 2.0);
+  } else if (s === "CRUDEOIL") {
+    tgtPts = tf === "1m" || tf === "2m" ? 30.0 : tf === "3m" || tf === "5m" ? 45.0 : tf === "15m" || tf === "30m" ? 65.0 : 85.0;
+    slPts = Math.round(tgtPts / 2.0);
+  } else if (s === "NATURALGAS") {
+    tgtPts = tf === "1m" || tf === "2m" ? 3.0 : tf === "3m" || tf === "5m" ? 4.5 : tf === "15m" || tf === "30m" ? 6.5 : 9.0;
+    slPts = Math.round((tgtPts / 2.0) * 10) / 10;
+  } else if (s === "COPPER") {
+    tgtPts = tf === "1m" || tf === "2m" ? 6.0 : tf === "3m" || tf === "5m" ? 9.0 : tf === "15m" || tf === "30m" ? 14.0 : 20.0;
+    slPts = Math.round((tgtPts / 2.0) * 10) / 10;
+  } else if (p >= 10000) {
     // Strictly calibrated between 50 and 100 points for indices (NIFTY, BANKNIFTY)
     if (tf === "1m" || tf === "2m") {
       tgtPts = 50.0;
@@ -205,8 +292,10 @@ const TIMEFRAME_TARGET_HORIZONS = {
   }
 };
 
-const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
+const enrichPatternWithLevels = (p, candles, timeframe = "1D", currentSymbol = "") => {
   const tfConfig = TIMEFRAME_TARGET_HORIZONS[timeframe] || TIMEFRAME_TARGET_HORIZONS["1D"];
+  const cleanSym = cleanCommodityKey(currentSymbol);
+  const isCommodity = !!COMMODITY_SPECS[cleanSym];
   const name = p.pattern || "Pattern";
   const isBullish = 
     p.is_bullish === true ||
@@ -246,9 +335,9 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
   let target = p.target ? Number(p.target) : 0;
   let stopLoss = p.stop_loss ? Number(p.stop_loss) : 0;
 
-  // Calculate high-probability target and stop loss strictly conforming to 50-100 pts rule for indices
-  const levelCalc = calculateTradeLevels(entry, isBullish, timeframe);
-  if (!target || !stopLoss || (entry >= 10000 && (Math.abs(target - entry) < 45 || Math.abs(target - entry) > 105 || Math.abs(entry - stopLoss) > 55))) {
+  // Calculate high-probability target and stop loss strictly conforming to 50-100 pts rule for indices (or commodity scales)
+  const levelCalc = calculateTradeLevels(entry, isBullish, timeframe, cleanSym);
+  if (!target || !stopLoss || (!isCommodity && entry >= 10000 && (Math.abs(target - entry) < 45 || Math.abs(target - entry) > 105 || Math.abs(entry - stopLoss) > 55))) {
     target = levelCalc.target;
     stopLoss = levelCalc.stopLoss;
   }
@@ -383,10 +472,25 @@ const enrichPatternWithLevels = (p, candles, timeframe = "1D") => {
     }
   }
 
-  const atmStrike = calculateFnoStrike(entry);
+  const atmStrike = calculateFnoStrike(entry, cleanSym);
   const optType = isBullish ? "CE" : "PE";
   const fnoStrikeStr = `${atmStrike} ${optType}`;
-  const fnoInstrument = p.fno_instrument || `BUY ${fnoStrikeStr} / ${isBullish ? 'BUY' : 'SHORT'} FUTURE`;
+  let fnoInstrument = p.fno_instrument;
+  if (!fnoInstrument) {
+    if (cleanSym === "GOLD") {
+      fnoInstrument = `MCX GOLD ${atmStrike} ${optType} / ${isBullish ? 'BUY' : 'SHORT'} 10g FUT`;
+    } else if (cleanSym === "SILVER") {
+      fnoInstrument = `MCX SILVER ${atmStrike} ${optType} / ${isBullish ? 'BUY' : 'SHORT'} 1kg FUT`;
+    } else if (cleanSym === "CRUDEOIL") {
+      fnoInstrument = `MCX CRUDEOIL ${atmStrike} ${optType} / ${isBullish ? 'BUY' : 'SHORT'} 100bbl FUT`;
+    } else if (cleanSym === "NATURALGAS") {
+      fnoInstrument = `MCX NATURALGAS ${atmStrike} ${optType} / ${isBullish ? 'BUY' : 'SHORT'} FUT`;
+    } else if (cleanSym === "COPPER") {
+      fnoInstrument = `MCX COPPER ${atmStrike} ${optType} / ${isBullish ? 'BUY' : 'SHORT'} FUT`;
+    } else {
+      fnoInstrument = `BUY ${fnoStrikeStr} / ${isBullish ? 'BUY' : 'SHORT'} FUTURE`;
+    }
+  }
   const maxHoldingDays = p.max_holding_days || defaultHolding;
 
   return {
@@ -558,7 +662,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
         const response = await api.get(`/api/stocks/${encodeURIComponent(symbol)}/history?timeframe=${timeframe}`);
         const rawData = response.data;
         if (rawData && rawData.candles && rawData.candles.length > 0) {
-          const enrichedPatterns = (rawData.detected_patterns || []).map(p => enrichPatternWithLevels(p, rawData.candles, timeframe));
+          const enrichedPatterns = (rawData.detected_patterns || []).map(p => enrichPatternWithLevels(p, rawData.candles, timeframe, symbol));
           
           setData((prev) => {
             if (!prev || !prev.candles || prev.candles.length === 0) {
@@ -643,7 +747,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       const response = await api.get(`/api/stocks/${encodeURIComponent(symbol)}/history?timeframe=${timeframe}`);
       const rawData = response.data;
       if (rawData && rawData.candles) {
-        const enrichedPatterns = (rawData.detected_patterns || []).map(p => enrichPatternWithLevels(p, rawData.candles, timeframe));
+        const enrichedPatterns = (rawData.detected_patterns || []).map(p => enrichPatternWithLevels(p, rawData.candles, timeframe, symbol));
         setData({
           ...rawData,
           detected_patterns: enrichedPatterns
@@ -1125,10 +1229,17 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     if (searchInput) {
-      setSymbol(searchInput.trim().toUpperCase());
+      const clean = cleanCommodityKey(searchInput);
+      if (COMMODITY_SPECS[clean]) {
+        setSymbol(clean);
+      } else {
+        setSymbol(searchInput.trim().toUpperCase());
+      }
     }
   };
 
+  const cleanCurrentSym = cleanCommodityKey(symbol);
+  const commoditySpec = COMMODITY_SPECS[cleanCurrentSym];
   const currencySymbol = isIndianSymbol(symbol) ? "₹" : "$";
   const basePrice = data?.candles?.[data.candles.length - 1]?.close || 100;
   const displayedPrice = livePrice || basePrice;
@@ -1139,7 +1250,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   const tfConfig = TIMEFRAME_TARGET_HORIZONS[timeframe] || TIMEFRAME_TARGET_HORIZONS["1D"];
   const isAiBuy = analysis?.signal === "BUY";
   const isAiSell = analysis?.signal === "SELL";
-  const aiTradeLevels = (isAiBuy || isAiSell) ? calculateTradeLevels(latestPrice, isAiBuy, timeframe) : null;
+  const aiTradeLevels = (isAiBuy || isAiSell) ? calculateTradeLevels(latestPrice, isAiBuy, timeframe, symbol) : null;
   const aiTarget = aiTradeLevels ? aiTradeLevels.target : null;
   const aiStopLoss = aiTradeLevels ? aiTradeLevels.stopLoss : null;
   const aiTargetPoints = aiTradeLevels ? aiTradeLevels.tgtPts : 0;
@@ -1174,14 +1285,17 @@ const ChartContainer = ({ symbol, setSymbol }) => {
     const isBull = recentPattern ? (recentPattern.recommendation === "BUY" || recentPattern.is_bullish)
       : (analysis?.signal === "BUY" ? true : (analysis?.signal === "SELL" ? false : cPrice >= (lastC.ema_50 || lastC.sma_20 || cPrice)));
 
-    const levels = calculateTradeLevels(cPrice, isBull, timeframe);
+    const levels = calculateTradeLevels(cPrice, isBull, timeframe, symbol);
     const tgt = levels.target;
     const sl = levels.stopLoss;
     const tgtDist = levels.tgtPts;
     const slDist = levels.slPts;
-    const strike = calculateFnoStrike(cPrice);
+    const strike = calculateFnoStrike(cPrice, symbol);
     const opt = isBull ? "CE" : "PE";
     const patternName = recentPattern ? recentPattern.pattern : (isBull ? "Bullish Trend Expansion" : "Bearish Breakdown Continuation");
+    const fnoCallout = commoditySpec 
+      ? `MCX ${commoditySpec.name.toUpperCase()} ${strike} ${opt} / ${isBull ? 'BUY' : 'SHORT'} FUT`
+      : `BUY ${strike} ${opt} / ${isBull ? 'BUY' : 'SHORT'} FUTURE`;
 
     return {
       pattern: patternName,
@@ -1265,21 +1379,43 @@ const ChartContainer = ({ symbol, setSymbol }) => {
           </div>
 
           {/* DYNAMIC LIVE PRICE TICKER */}
-          <div className="flex items-baseline gap-3 mt-1.5 flex-wrap">
-            <h2 className="text-2xl font-black text-white font-outfit tracking-tight">{symbol}</h2>
-            <div className="flex items-baseline gap-2">
-              <span className={`text-2xl font-black font-mono transition-colors duration-200 ${
-                priceDirection === 'up' ? 'text-emerald-400' : priceDirection === 'down' ? 'text-rose-400' : 'text-white'
-              }`}>
-                {currencySymbol}{displayedPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-              <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded flex items-center gap-1 ${
-                priceChange >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
-              }`}>
-                {priceChange >= 0 ? '▲ +' : '▼ '}
-                {currencySymbol}{Math.abs(priceChange).toFixed(2)} ({priceChangePct >= 0 ? '+' : ''}{priceChangePct.toFixed(2)}%)
-              </span>
+          <div className="flex flex-col gap-1 mt-1.5">
+            <div className="flex items-baseline gap-3 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-2xl font-black text-white font-outfit tracking-tight">
+                  {commoditySpec ? `${commoditySpec.name} (MCX)` : symbol}
+                </h2>
+                {commoditySpec && (
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 shadow-sm">
+                    MCX India
+                  </span>
+                )}
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className={`text-2xl font-black font-mono transition-colors duration-200 ${
+                  priceDirection === 'up' ? 'text-emerald-400' : priceDirection === 'down' ? 'text-rose-400' : 'text-white'
+                }`}>
+                  {currencySymbol}{displayedPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded flex items-center gap-1 ${
+                  priceChange >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
+                }`}>
+                  {priceChange >= 0 ? '▲ +' : '▼ '}
+                  {currencySymbol}{Math.abs(priceChange).toFixed(2)} ({priceChangePct >= 0 ? '+' : ''}{priceChangePct.toFixed(2)}%)
+                </span>
+              </div>
             </div>
+            {commoditySpec && (
+              <div className="flex items-center gap-2 text-xs text-gray-400 font-mono flex-wrap">
+                <span className="text-amber-300 font-semibold">{commoditySpec.fullName}</span>
+                <span>•</span>
+                <span className="text-gray-300">{commoditySpec.unit}</span>
+                <span>•</span>
+                <span>Lot: <strong className="text-white">{commoditySpec.lot}</strong></span>
+                <span>•</span>
+                <span className="text-indigo-300">Session: {commoditySpec.hours}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1308,8 +1444,10 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                         key={item.symbol}
                         type="button"
                         onClick={() => {
-                          setSearchInput(item.symbol);
-                          setSymbol(item.symbol);
+                          const clean = cleanCommodityKey(item.symbol);
+                          const targetSym = COMMODITY_SPECS[clean] ? clean : item.symbol;
+                          setSearchInput(targetSym);
+                          setSymbol(targetSym);
                           setShowSuggestions(false);
                         }}
                         className="w-full text-left px-4 py-2.5 hover:bg-indigo-600/25 flex justify-between items-center transition-colors border-b border-gray-900/50 last:border-0"
