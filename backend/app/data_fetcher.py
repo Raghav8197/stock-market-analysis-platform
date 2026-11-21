@@ -399,25 +399,26 @@ def generate_mock_history(symbol: str, timeframe: str, limit: int) -> pd.DataFra
     # Determine base price
     base_price = 150.0
     upper_sym = symbol.upper()
-    if "BTC" in symbol:
+    clean_sym = clean_commodity_symbol(symbol)
+    if "BTC" in upper_sym:
         base_price = 65000.0
-    elif "ETH" in symbol:
+    elif "ETH" in upper_sym:
         base_price = 35000.0
-    elif "NIFTY" in symbol:
+    elif "NIFTY" in upper_sym:
         base_price = 22000.0
-    elif "RELIANCE" in symbol:
+    elif "RELIANCE" in upper_sym:
         base_price = 2800.0
-    elif symbol in ["TCS", "INFY"]:
+    elif upper_sym in ["TCS", "INFY"]:
         base_price = 3500.0
-    elif upper_sym in ["GOLD", "GC=F"]:
+    elif clean_sym == "GOLD" or upper_sym in ["GOLD", "GC=F"]:
         base_price = 122500.0
-    elif upper_sym in ["SILVER", "SI=F"]:
+    elif clean_sym == "SILVER" or upper_sym in ["SILVER", "SI=F"]:
         base_price = 151800.0
-    elif upper_sym in ["CRUDEOIL", "CL=F"]:
+    elif clean_sym == "CRUDEOIL" or upper_sym in ["CRUDEOIL", "CL=F"] or "CRUDE" in upper_sym:
         base_price = 7720.0
-    elif upper_sym in ["NATURALGAS", "NG=F"]:
+    elif clean_sym == "NATURALGAS" or upper_sym in ["NATURALGAS", "NG=F"] or "GAS" in upper_sym:
         base_price = 303.0
-    elif upper_sym in ["COPPER", "HG=F"]:
+    elif clean_sym == "COPPER" or upper_sym in ["COPPER", "HG=F"]:
         base_price = 1155.0
         
     dates = []
@@ -726,8 +727,17 @@ def get_live_ticker_price(symbol: str) -> float:
             price = None
             
     if price is None:
+        clean = clean_commodity_symbol(symbol)
         resolved = resolve_ticker(symbol)
-        price = base_prices.get(resolved, base_prices.get(symbol.upper(), 150.0))
+        fallback_default = (
+            303.0 if "GAS" in symbol.upper() else
+            122500.0 if "GOLD" in symbol.upper() else
+            151800.0 if "SILVER" in symbol.upper() else
+            7720.0 if "CRUDE" in symbol.upper() else
+            1155.0 if "COPPER" in symbol.upper() else
+            150.0
+        )
+        price = base_prices.get(clean) or base_prices.get(resolved) or base_prices.get(symbol.upper()) or fallback_default
 
     # Apply random walk on base price (only if market is open)
     if is_open:

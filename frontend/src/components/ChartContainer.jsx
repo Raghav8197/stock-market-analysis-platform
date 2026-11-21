@@ -107,6 +107,7 @@ const SEARCH_DATABASE = [
 ];
 
 import Fundamentals from "./Fundamentals";
+import TradingViewWidget, { getTradingViewSymbol } from "./TradingViewWidget";
 import { 
   Eye, 
   EyeOff, 
@@ -1535,23 +1536,33 @@ const ChartContainer = ({ symbol, setSymbol }) => {
         ))}
       </div>
 
-      {/* Sub-tab selection: Technical vs Fundamental */}
-      <div className="flex gap-2 border-b border-gray-900 pb-2">
+      {/* Sub-tab selection: TradingView vs Technical Scanner vs Fundamental */}
+      <div className="flex flex-wrap gap-2 border-b border-gray-900 pb-2">
+        <button
+          onClick={() => setActiveChartTab("tradingview")}
+          className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition-colors flex items-center gap-1.5 cursor-pointer ${
+            activeChartTab === "tradingview" 
+              ? "bg-amber-500 text-gray-950 font-black shadow-md shadow-amber-500/20" 
+              : "bg-darkCard hover:bg-gray-800 text-gray-300"
+          }`}
+        >
+          <span>📈 TradingView Chart ({commoditySpec ? `${commoditySpec.name} MCX` : getTradingViewSymbol(symbol)})</span>
+        </button>
         <button
           onClick={() => setActiveChartTab("technical")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition-colors ${
+          className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition-colors flex items-center gap-1.5 cursor-pointer ${
             activeChartTab === "technical" 
-              ? "bg-indigo-650/20 text-indigo-400 border border-indigo-500/20" 
+              ? "bg-indigo-650/20 text-indigo-400 border border-indigo-500/20 font-black" 
               : "bg-darkCard hover:bg-gray-800 text-gray-400"
           }`}
         >
-          Technical Analysis
+          <span>⚡ AI Pattern Radar & Scanner</span>
         </button>
         <button
           onClick={() => setActiveChartTab("fundamental")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition-colors ${
+          className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition-colors cursor-pointer ${
             activeChartTab === "fundamental" 
-              ? "bg-indigo-650/20 text-indigo-400 border border-indigo-500/20" 
+              ? "bg-indigo-650/20 text-indigo-400 border border-indigo-500/20 font-black" 
               : "bg-darkCard hover:bg-gray-800 text-gray-400"
           }`}
         >
@@ -1559,7 +1570,26 @@ const ChartContainer = ({ symbol, setSymbol }) => {
         </button>
       </div>
 
-      {activeChartTab === "technical" ? (
+      {activeChartTab === "tradingview" ? (
+        <div className="glass-panel p-4 md:p-6 rounded-2xl space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-850">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-amber-400 uppercase tracking-wider font-outfit">Official TradingView Real-Time Chart</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-gray-900 border border-gray-800 text-gray-300 font-bold">
+                {getTradingViewSymbol(symbol)}
+              </span>
+            </div>
+            <span className="text-xs text-gray-400 font-mono">
+              Live Continuous Contract • Interactive Indicators • Real-Time MCX Quotes
+            </span>
+          </div>
+          <TradingViewWidget 
+            symbol={symbol} 
+            timeframe={timeframe} 
+            height={550} 
+          />
+        </div>
+      ) : activeChartTab === "technical" ? (
         /* Main Chart Card */
         <div className="glass-panel p-6 rounded-2xl space-y-4">
           {/* Toggle Overlays row */}

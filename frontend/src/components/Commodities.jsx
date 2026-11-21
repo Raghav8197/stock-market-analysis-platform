@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries } from "lightweight-charts";
 import api from "../services/api";
 import { useLiveData } from "../context/LiveDataContext";
+import TradingViewWidget, { getTradingViewSymbol } from "./TradingViewWidget";
 import { 
   Coins, 
   TrendingUp, 
@@ -85,6 +86,7 @@ const COMMODITIES_CONFIG = [
 const Commodities = ({ onSelectStock }) => {
   const { prices, connected } = useLiveData();
   const [selectedCommodity, setSelectedCommodity] = useState("GOLD");
+  const [chartViewMode, setChartViewMode] = useState("tradingview"); // "tradingview" or "scanner"
   const [timeframe, setTimeframe] = useState("1D");
   const [historyData, setHistoryData] = useState(null);
   const [analysisData, setAnalysisData] = useState(null);
@@ -374,11 +376,14 @@ const Commodities = ({ onSelectStock }) => {
         <div className="glass-panel p-5 rounded-2xl lg:col-span-2 flex flex-col justify-between">
           <div>
             {/* Chart Toolbar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-850 pb-3 mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-850 pb-3 mb-3">
               <div className="flex items-baseline gap-2">
                 <h3 className="text-xl font-black text-white font-outfit">{activeConfig.fullName}</h3>
                 <span className="text-xs font-bold text-amber-400 font-mono">
                   ₹{livePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {activeConfig.unit}
+                </span>
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                  {getTradingViewSymbol(selectedCommodity)}
                 </span>
               </div>
 
@@ -400,18 +405,50 @@ const Commodities = ({ onSelectStock }) => {
               </div>
             </div>
 
-            {/* Canvas Mount */}
-            <div className="relative min-h-[420px] w-full">
-              {chartLoading && (
-                <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-950/60 backdrop-blur-xs rounded-xl">
-                  <div className="flex flex-col items-center gap-2">
-                    <Loader2 className="w-8 h-8 animate-spin text-amber-400" />
-                    <span className="text-xs text-gray-300 font-medium">Fetching MCX INR Candles...</span>
-                  </div>
-                </div>
-              )}
-              <div ref={chartContainerRef} className="w-full h-[420px]" />
+            {/* Chart Engine Switcher */}
+            <div className="flex items-center gap-2 mb-3">
+              <button
+                onClick={() => setChartViewMode("tradingview")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  chartViewMode === "tradingview"
+                    ? "bg-amber-500 text-gray-950 shadow-md shadow-amber-500/20 font-black"
+                    : "bg-gray-900 text-gray-400 hover:text-white border border-gray-800"
+                }`}
+              >
+                <span>📈 Official TradingView MCX Chart</span>
+              </button>
+              <button
+                onClick={() => setChartViewMode("scanner")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  chartViewMode === "scanner"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-black"
+                    : "bg-gray-900 text-gray-400 hover:text-white border border-gray-850"
+                }`}
+              >
+                <span>⚡ AI Indicators & Patterns Engine</span>
+              </button>
             </div>
+
+            {/* Chart Display Area */}
+            {chartViewMode === "tradingview" ? (
+              <TradingViewWidget 
+                symbol={selectedCommodity} 
+                timeframe={timeframe} 
+                height={460} 
+              />
+            ) : (
+              <div className="relative min-h-[460px] w-full">
+                {chartLoading && (
+                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-950/60 backdrop-blur-xs rounded-xl">
+                    <div className="flex flex-col items-center gap-2">
+                      <Loader2 className="w-8 h-8 animate-spin text-amber-400" />
+                      <span className="text-xs text-gray-300 font-medium">Fetching MCX INR Candles...</span>
+                    </div>
+                  </div>
+                )}
+                <div ref={chartContainerRef} className="w-full h-[460px]" />
+              </div>
+            )}
           </div>
 
           <div className="mt-4 pt-3 border-t border-gray-850/60 flex items-center justify-between text-xs text-gray-400">
@@ -421,7 +458,7 @@ const Commodities = ({ onSelectStock }) => {
               <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-amber-500" /> SMA 20</span>
               <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-purple-500" /> EMA 50</span>
             </div>
-            <span>Quoted in Indian Rupees (₹)</span>
+            <span className="text-amber-400/80 font-mono">Live MCX Exchange Data in Indian Rupees (₹)</span>
           </div>
         </div>
 
