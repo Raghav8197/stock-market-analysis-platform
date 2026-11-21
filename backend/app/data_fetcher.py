@@ -15,9 +15,19 @@ TICKER_MAP = {
     "SENSEX": "^BSESN",
     # Commodities (MCX Indian Market in INR)
     "GOLD": "GC=F",
+    "GOLDM": "GC=F",
+    "GOLDMINI": "GC=F",
     "SILVER": "SI=F",
+    "SILVERM": "SI=F",
+    "SILVERMINI": "SI=F",
+    "SILVERMIC": "SI=F",
+    "SILVERMICRO": "SI=F",
     "CRUDEOIL": "CL=F",
+    "CRUDEOILM": "CL=F",
+    "CRUDEOILMINI": "CL=F",
     "NATURALGAS": "NG=F",
+    "NATGASMINI": "NG=F",
+    "NATURALGASMINI": "NG=F",
     "COPPER": "HG=F",
     # US Indices
     "NASDAQ": "^IXIC",
@@ -42,24 +52,57 @@ TICKER_MAP = {
     "EURUSD": "EURUSD=X"
 }
 
-COMMODITY_SYMBOLS = {"GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"}
+COMMODITY_SYMBOLS = {
+    "GOLD", "GOLDM", "GOLDMINI",
+    "SILVER", "SILVERM", "SILVERMINI", "SILVERMIC", "SILVERMICRO",
+    "CRUDEOIL", "CRUDEOILM", "CRUDEOILMINI",
+    "NATURALGAS", "NATGASMINI", "NATURALGASMINI",
+    "COPPER"
+}
 
-# Multipliers to convert international USD futures to Indian MCX INR specifications
+# Multipliers to convert international USD futures to Indian MCX INR specifications (calibrated to Groww/Sahi/MCX)
 COMMODITY_INR_MULTIPLIERS = {
-    "GOLD": 30.15,        # (GC=F COMEX USD/oz) * 30.15 -> MCX Gold 10g in ₹ INR (~₹1,22,500 - ₹1,24,000)
-    "SILVER": 3030.0,     # (SI=F COMEX USD/oz) * 3030.0 -> MCX Silver 1kg in ₹ INR (~₹1,51,000 - ₹1,53,000)
-    "CRUDEOIL": 86.75,    # (CL=F WTI USD/bbl) * 86.75 -> MCX Crude Oil 1bbl in ₹ INR (~₹7,650 - ₹7,750)
-    "NATURALGAS": 86.55,  # (NG=F Henry Hub USD/mmBtu) * 86.55 -> MCX Natural Gas 1mmBtu in ₹ INR (~₹300 - ₹308)
-    "COPPER": 190.0       # (HG=F COMEX USD/lb) * 190.0 -> MCX Copper 1kg in ₹ INR (~₹1,150 - ₹1,165)
+    "GOLD": 22.03,         # (GC=F COMEX USD/oz) * 22.03 -> MCX Gold 10g in ₹ INR (~₹77,450)
+    "GOLDM": 22.02,        # (GC=F COMEX USD/oz) * 22.02 -> MCX Gold Mini 10g in ₹ INR (~₹77,420)
+    "SILVER": 2227.6,      # (SI=F COMEX USD/oz) * 2227.6 -> MCX Silver 1kg in ₹ INR (~₹91,400)
+    "SILVERM": 2227.1,     # (SI=F COMEX USD/oz) * 2227.1 -> MCX Silver Mini 1kg in ₹ INR (~₹91,380)
+    "SILVERMIC": 2226.6,   # (SI=F COMEX USD/oz) * 2226.6 -> MCX Silver Micro 1kg in ₹ INR (~₹91,360)
+    "CRUDEOIL": 72.04,     # (CL=F WTI USD/bbl) * 72.04 -> MCX Crude Oil 1bbl in ₹ INR (~₹6,050)
+    "CRUDEOILM": 72.10,    # (CL=F WTI USD/bbl) * 72.10 -> MCX Crude Oil Mini 1bbl in ₹ INR (~₹6,055)
+    "NATURALGAS": 88.85,   # (NG=F Henry Hub USD/mmBtu) * 88.85 -> MCX Natural Gas 1mmBtu in ₹ INR (~₹303)
+    "NATGASMINI": 88.91,   # (NG=F Henry Hub USD/mmBtu) * 88.91 -> MCX Natural Gas Mini 1mmBtu in ₹ INR (~₹303.20)
+    "COPPER": 152.37       # (HG=F COMEX USD/lb) * 152.37 -> MCX Copper 1kg in ₹ INR (~₹835)
 }
 
 def clean_commodity_symbol(symbol: str) -> str:
-    """Normalize any commodity alias (e.g. MCX:GOLD, GOLD.MCX, MCX_GOLD) to standard key."""
+    """Normalize any commodity alias (e.g. MCX:GOLD, GOLD.MCX, MCX_GOLD, GOLDM, GOLDMINI) to standard key."""
     if not symbol:
         return ""
     s = symbol.upper().replace("MCX:", "").replace(".MCX", "").replace("MCX_", "").strip()
     if s.startswith("MCX") and len(s) > 3:
         s = s[3:].strip()
+    
+    # Normalize aliases to standard keys
+    if s in ["GOLDM", "GOLDMINI", "GOLD-MINI", "GOLD_MINI", "GOLDM1!"]:
+        return "GOLDM"
+    if s in ["SILVERM", "SILVERMINI", "SILVER-MINI", "SILVER_MINI", "SILVERM1!"]:
+        return "SILVERM"
+    if s in ["SILVERMIC", "SILVERMICRO", "SILVER-MICRO", "SILVER_MICRO", "SILVERMIC1!"]:
+        return "SILVERMIC"
+    if s in ["CRUDEOILM", "CRUDEOILMINI", "CRUDEMINI", "CRUDE-MINI", "CRUDEOILM1!"]:
+        return "CRUDEOILM"
+    if s in ["NATGASMINI", "NATURALGASMINI", "NATURALGAS-MINI", "NATGASMINI1!"]:
+        return "NATGASMINI"
+    if s in ["GOLD", "GOLD1!"]:
+        return "GOLD"
+    if s in ["SILVER", "SILVER1!"]:
+        return "SILVER"
+    if s in ["CRUDEOIL", "CRUDE", "CRUDEOIL1!"]:
+        return "CRUDEOIL"
+    if s in ["NATURALGAS", "NATGAS", "NATURALGAS1!"]:
+        return "NATURALGAS"
+    if s in ["COPPER", "COPPER1!"]:
+        return "COPPER"
     return s
 
 def resolve_ticker(symbol: str) -> str:
@@ -170,14 +213,20 @@ def fetch_fundamentals(symbol: str) -> Dict[str, Any]:
     ticker_symbol = resolve_ticker(symbol)
 
     if upper_sym in COMMODITY_SYMBOLS or ticker_symbol in ["GC=F", "SI=F", "CL=F", "NG=F", "HG=F"]:
+        clean_c = clean_commodity_symbol(symbol)
         commodity_specs = {
-            "GOLD": {"name": "MCX Gold (10g) in INR", "unit": "10 Grams", "base": 122500.0},
-            "SILVER": {"name": "MCX Silver (1kg) in INR", "unit": "1 Kilogram", "base": 151800.0},
-            "CRUDEOIL": {"name": "MCX Crude Oil in INR", "unit": "1 Barrel (bbl)", "base": 7720.0},
-            "NATURALGAS": {"name": "MCX Natural Gas in INR", "unit": "1 mmBtu", "base": 303.0},
-            "COPPER": {"name": "MCX Copper (1kg) in INR", "unit": "1 Kilogram", "base": 1155.0},
+            "GOLD": {"name": "MCX Gold (10g) in INR", "unit": "10 Grams", "base": 77450.0},
+            "GOLDM": {"name": "MCX Gold Mini (10g) in INR", "unit": "10 Grams (Lot: 100g)", "base": 77420.0},
+            "SILVER": {"name": "MCX Silver (1kg) in INR", "unit": "1 Kilogram (Lot: 30kg)", "base": 91400.0},
+            "SILVERM": {"name": "MCX Silver Mini (1kg) in INR", "unit": "1 Kilogram (Lot: 5kg)", "base": 91380.0},
+            "SILVERMIC": {"name": "MCX Silver Micro (1kg) in INR", "unit": "1 Kilogram (Lot: 1kg)", "base": 91360.0},
+            "CRUDEOIL": {"name": "MCX Crude Oil in INR", "unit": "1 Barrel (Lot: 100bbl)", "base": 6050.0},
+            "CRUDEOILM": {"name": "MCX Crude Oil Mini in INR", "unit": "1 Barrel (Lot: 10bbl)", "base": 6055.0},
+            "NATURALGAS": {"name": "MCX Natural Gas in INR", "unit": "1 mmBtu (Lot: 1250mmBtu)", "base": 303.0},
+            "NATGASMINI": {"name": "MCX Natural Gas Mini in INR", "unit": "1 mmBtu (Lot: 250mmBtu)", "base": 303.2},
+            "COPPER": {"name": "MCX Copper (1kg) in INR", "unit": "1 Kilogram (Lot: 2500kg)", "base": 835.0},
         }
-        spec = commodity_specs.get(upper_sym, {"name": f"MCX {upper_sym}", "unit": "Standard Contract", "base": 1000.0})
+        spec = commodity_specs.get(clean_c) or commodity_specs.get(upper_sym, {"name": f"MCX {upper_sym}", "unit": "Standard Contract", "base": 1000.0})
         b = spec["base"]
         return {
             "name": spec["name"],
@@ -411,15 +460,25 @@ def generate_mock_history(symbol: str, timeframe: str, limit: int) -> pd.DataFra
     elif upper_sym in ["TCS", "INFY"]:
         base_price = 3500.0
     elif clean_sym == "GOLD" or upper_sym in ["GOLD", "GC=F"]:
-        base_price = 122500.0
+        base_price = 77450.0
+    elif clean_sym == "GOLDM" or "GOLDM" in upper_sym or "GOLDMINI" in upper_sym:
+        base_price = 77420.0
     elif clean_sym == "SILVER" or upper_sym in ["SILVER", "SI=F"]:
-        base_price = 151800.0
+        base_price = 91400.0
+    elif clean_sym == "SILVERM" or "SILVERM" in upper_sym or "SILVERMINI" in upper_sym:
+        base_price = 91380.0
+    elif clean_sym == "SILVERMIC" or "SILVERMIC" in upper_sym or "SILVERMICRO" in upper_sym:
+        base_price = 91360.0
     elif clean_sym == "CRUDEOIL" or upper_sym in ["CRUDEOIL", "CL=F"] or "CRUDE" in upper_sym:
-        base_price = 7720.0
+        base_price = 6050.0
+    elif clean_sym == "CRUDEOILM" or "CRUDEOILM" in upper_sym or "CRUDEMINI" in upper_sym:
+        base_price = 6055.0
     elif clean_sym == "NATURALGAS" or upper_sym in ["NATURALGAS", "NG=F"] or "GAS" in upper_sym:
         base_price = 303.0
+    elif clean_sym == "NATGASMINI" or "NATGASMINI" in upper_sym:
+        base_price = 303.20
     elif clean_sym == "COPPER" or upper_sym in ["COPPER", "HG=F"]:
-        base_price = 1155.0
+        base_price = 835.0
         
     dates = []
     curr_time = datetime.now()
@@ -653,21 +712,26 @@ def get_live_ticker_price(symbol: str) -> float:
 
     # Fallback base prices dictionary
     base_prices = {
-        # Indian Indices & Commodities
-        "NIFTY": 22450.50,
-        "BANKNIFTY": 48200.20,
-        "GIFTNIFTY": 22530.10,
-        "SENSEX": 73800.40,
-        "GOLD": 122500.00,
-        "SILVER": 151800.00,
-        "CRUDEOIL": 7720.00,
+        # Indian Indices & Commodities (MCX Rates in INR matching Groww / Sahi App)
+        "NIFTY": 24200.50,
+        "BANKNIFTY": 52100.20,
+        "GIFTNIFTY": 24250.10,
+        "SENSEX": 79800.40,
+        "GOLD": 77450.00,
+        "GOLDM": 77420.00,
+        "SILVER": 91400.00,
+        "SILVERM": 91380.00,
+        "SILVERMIC": 91360.00,
+        "CRUDEOIL": 6050.00,
+        "CRUDEOILM": 6055.00,
         "NATURALGAS": 303.00,
-        "COPPER": 1155.00,
-        "GC=F": 122500.00,
-        "SI=F": 151800.00,
-        "CL=F": 7720.00,
+        "NATGASMINI": 303.20,
+        "COPPER": 835.00,
+        "GC=F": 77450.00,
+        "SI=F": 91400.00,
+        "CL=F": 6050.00,
         "NG=F": 303.00,
-        "HG=F": 1155.00,
+        "HG=F": 835.00,
         "NASDAQ": 16400.30,
         "NYSE": 17800.10,
         "SP500": 5200.40,
@@ -730,11 +794,16 @@ def get_live_ticker_price(symbol: str) -> float:
         clean = clean_commodity_symbol(symbol)
         resolved = resolve_ticker(symbol)
         fallback_default = (
+            303.20 if "GAS" in symbol.upper() and ("MINI" in symbol.upper() or "M" in symbol.upper()) else
             303.0 if "GAS" in symbol.upper() else
-            122500.0 if "GOLD" in symbol.upper() else
-            151800.0 if "SILVER" in symbol.upper() else
-            7720.0 if "CRUDE" in symbol.upper() else
-            1155.0 if "COPPER" in symbol.upper() else
+            77420.0 if "GOLD" in symbol.upper() and ("M" in symbol.upper() or "MINI" in symbol.upper()) else
+            77450.0 if "GOLD" in symbol.upper() else
+            91360.0 if "SILVER" in symbol.upper() and ("MIC" in symbol.upper() or "MICRO" in symbol.upper()) else
+            91380.0 if "SILVER" in symbol.upper() and ("M" in symbol.upper() or "MINI" in symbol.upper()) else
+            91400.0 if "SILVER" in symbol.upper() else
+            6055.0 if "CRUDE" in symbol.upper() and ("M" in symbol.upper() or "MINI" in symbol.upper()) else
+            6050.0 if "CRUDE" in symbol.upper() else
+            835.0 if "COPPER" in symbol.upper() else
             150.0
         )
         price = base_prices.get(clean) or base_prices.get(resolved) or base_prices.get(symbol.upper()) or fallback_default

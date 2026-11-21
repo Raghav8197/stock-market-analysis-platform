@@ -21,9 +21,19 @@ const COMMODITY_SPECS = {
     fullName: "MCX Gold (10g)",
     unit: "₹ per 10 Grams",
     exchange: "MCX India",
-    lot: "1 kg (Regular) / 100g (Mini)",
+    lot: "1 kg (100 units of 10g)",
     tick: "₹1.00",
-    fno: "MCX GOLD 10g FUT",
+    fno: "MCX GOLD 10g FUT (Lot: 1kg)",
+    hours: "09:00 - 23:30 IST"
+  },
+  GOLDM: {
+    name: "Gold Mini",
+    fullName: "MCX Gold Mini (10g)",
+    unit: "₹ per 10 Grams",
+    exchange: "MCX India",
+    lot: "100 Grams (10 units of 10g)",
+    tick: "₹1.00",
+    fno: "MCX GOLDM 10g FUT (Lot: 100g)",
     hours: "09:00 - 23:30 IST"
   },
   SILVER: {
@@ -31,9 +41,29 @@ const COMMODITY_SPECS = {
     fullName: "MCX Silver (1kg)",
     unit: "₹ per 1 Kilogram",
     exchange: "MCX India",
-    lot: "30 kg (Regular) / 5 kg (Mini)",
+    lot: "30 Kilograms",
     tick: "₹1.00",
-    fno: "MCX SILVER 1kg FUT",
+    fno: "MCX SILVER 1kg FUT (Lot: 30kg)",
+    hours: "09:00 - 23:30 IST"
+  },
+  SILVERM: {
+    name: "Silver Mini",
+    fullName: "MCX Silver Mini (1kg)",
+    unit: "₹ per 1 Kilogram",
+    exchange: "MCX India",
+    lot: "5 Kilograms",
+    tick: "₹1.00",
+    fno: "MCX SILVERM 1kg FUT (Lot: 5kg)",
+    hours: "09:00 - 23:30 IST"
+  },
+  SILVERMIC: {
+    name: "Silver Micro",
+    fullName: "MCX Silver Micro (1kg)",
+    unit: "₹ per 1 Kilogram",
+    exchange: "MCX India",
+    lot: "1 Kilogram",
+    tick: "₹1.00",
+    fno: "MCX SILVERMIC 1kg FUT (Lot: 1kg)",
     hours: "09:00 - 23:30 IST"
   },
   CRUDEOIL: {
@@ -41,9 +71,19 @@ const COMMODITY_SPECS = {
     fullName: "MCX Crude Oil (1 bbl)",
     unit: "₹ per 1 Barrel (bbl)",
     exchange: "MCX India",
-    lot: "100 Barrels (Regular) / 10 Barrels (Mini)",
+    lot: "100 Barrels",
     tick: "₹1.00",
     fno: "MCX CRUDEOIL 100bbl FUT",
+    hours: "09:00 - 23:30 IST"
+  },
+  CRUDEOILM: {
+    name: "Crude Oil Mini",
+    fullName: "MCX Crude Oil Mini (1 bbl)",
+    unit: "₹ per 1 Barrel (bbl)",
+    exchange: "MCX India",
+    lot: "10 Barrels",
+    tick: "₹1.00",
+    fno: "MCX CRUDEOILM 10bbl FUT",
     hours: "09:00 - 23:30 IST"
   },
   NATURALGAS: {
@@ -56,12 +96,22 @@ const COMMODITY_SPECS = {
     fno: "MCX NATURALGAS FUT",
     hours: "09:00 - 23:30 IST"
   },
+  NATGASMINI: {
+    name: "Natural Gas Mini",
+    fullName: "MCX Nat Gas Mini (mmBtu)",
+    unit: "₹ per 1 mmBtu",
+    exchange: "MCX India",
+    lot: "250 mmBtu",
+    tick: "₹0.10",
+    fno: "MCX NATGASMINI FUT",
+    hours: "09:00 - 23:30 IST"
+  },
   COPPER: {
     name: "Copper",
     fullName: "MCX Copper (1kg)",
     unit: "₹ per 1 Kilogram",
     exchange: "MCX India",
-    lot: "2,500 kg (Regular) / 250 kg (Mini)",
+    lot: "2,500 Kilograms",
     tick: "₹0.05",
     fno: "MCX COPPER 2500kg FUT",
     hours: "09:00 - 23:30 IST"
@@ -71,7 +121,18 @@ const COMMODITY_SPECS = {
 const cleanCommodityKey = (sym) => {
   if (!sym) return "";
   const s = String(sym).toUpperCase().replace("MCX:", "").replace(".MCX", "").replace("MCX_", "").trim();
-  return s.startsWith("MCX") && s.length > 3 ? s.slice(3).trim() : s;
+  const raw = s.startsWith("MCX") && s.length > 3 ? s.slice(3).trim() : s;
+  if (raw === "GOLDM" || raw === "GOLDMINI" || raw === "GOLD-MINI" || raw === "GOLDM1!") return "GOLDM";
+  if (raw === "SILVERM" || raw === "SILVERMINI" || raw === "SILVER-MINI" || raw === "SILVERM1!") return "SILVERM";
+  if (raw === "SILVERMIC" || raw === "SILVERMICRO" || raw === "SILVER-MICRO" || raw === "SILVERMIC1!") return "SILVERMIC";
+  if (raw === "CRUDEOILM" || raw === "CRUDEOILMINI" || raw === "CRUDE-MINI" || raw === "CRUDEOILM1!") return "CRUDEOILM";
+  if (raw === "NATGASMINI" || raw === "NATURALGASMINI" || raw === "NATGASMINI1!") return "NATGASMINI";
+  if (raw === "GOLD" || raw === "GOLD1!") return "GOLD";
+  if (raw === "SILVER" || raw === "SILVER1!") return "SILVER";
+  if (raw === "CRUDEOIL" || raw === "CRUDEOIL1!") return "CRUDEOIL";
+  if (raw === "NATURALGAS" || raw === "NATURALGAS1!") return "NATURALGAS";
+  if (raw === "COPPER" || raw === "COPPER1!") return "COPPER";
+  return raw;
 };
 
 const SEARCH_DATABASE = [
@@ -128,10 +189,10 @@ import {
 const calculateFnoStrike = (price, sym = "") => {
   const s = cleanCommodityKey(sym);
   let step = 0.5;
-  if (s === "GOLD") step = 100;
-  else if (s === "SILVER") step = 500;
-  else if (s === "CRUDEOIL") step = 50;
-  else if (s === "NATURALGAS") step = 5;
+  if (s === "GOLD" || s === "GOLDM") step = 100;
+  else if (s === "SILVER" || s === "SILVERM" || s === "SILVERMIC") step = 500;
+  else if (s === "CRUDEOIL" || s === "CRUDEOILM") step = 50;
+  else if (s === "NATURALGAS" || s === "NATGASMINI") step = 5;
   else if (s === "COPPER") step = 5;
   else if (price >= 20000) step = 100;
   else if (price >= 10000) step = 50;
@@ -148,20 +209,20 @@ const calculateTradeLevels = (entry, isBullish, tf = "5m", sym = "") => {
   const s = cleanCommodityKey(sym);
   let tgtPts, slPts;
 
-  if (s === "GOLD") {
-    tgtPts = tf === "1m" || tf === "2m" ? 120.0 : tf === "3m" || tf === "5m" ? 180.0 : tf === "15m" || tf === "30m" ? 250.0 : 350.0;
+  if (s === "GOLD" || s === "GOLDM") {
+    tgtPts = tf === "1m" || tf === "2m" ? 100.0 : tf === "3m" || tf === "5m" ? 150.0 : tf === "15m" || tf === "30m" ? 220.0 : 300.0;
     slPts = Math.round(tgtPts / 2.0);
-  } else if (s === "SILVER") {
-    tgtPts = tf === "1m" || tf === "2m" ? 300.0 : tf === "3m" || tf === "5m" ? 450.0 : tf === "15m" || tf === "30m" ? 650.0 : 900.0;
+  } else if (s === "SILVER" || s === "SILVERM" || s === "SILVERMIC") {
+    tgtPts = tf === "1m" || tf === "2m" ? 250.0 : tf === "3m" || tf === "5m" ? 380.0 : tf === "15m" || tf === "30m" ? 550.0 : 800.0;
     slPts = Math.round(tgtPts / 2.0);
-  } else if (s === "CRUDEOIL") {
-    tgtPts = tf === "1m" || tf === "2m" ? 30.0 : tf === "3m" || tf === "5m" ? 45.0 : tf === "15m" || tf === "30m" ? 65.0 : 85.0;
+  } else if (s === "CRUDEOIL" || s === "CRUDEOILM") {
+    tgtPts = tf === "1m" || tf === "2m" ? 25.0 : tf === "3m" || tf === "5m" ? 35.0 : tf === "15m" || tf === "30m" ? 50.0 : 75.0;
     slPts = Math.round(tgtPts / 2.0);
-  } else if (s === "NATURALGAS") {
+  } else if (s === "NATURALGAS" || s === "NATGASMINI") {
     tgtPts = tf === "1m" || tf === "2m" ? 3.0 : tf === "3m" || tf === "5m" ? 4.5 : tf === "15m" || tf === "30m" ? 6.5 : 9.0;
     slPts = Math.round((tgtPts / 2.0) * 10) / 10;
   } else if (s === "COPPER") {
-    tgtPts = tf === "1m" || tf === "2m" ? 6.0 : tf === "3m" || tf === "5m" ? 9.0 : tf === "15m" || tf === "30m" ? 14.0 : 20.0;
+    tgtPts = tf === "1m" || tf === "2m" ? 5.0 : tf === "3m" || tf === "5m" ? 8.0 : tf === "15m" || tf === "30m" ? 12.0 : 18.0;
     slPts = Math.round((tgtPts / 2.0) * 10) / 10;
   } else if (p >= 10000) {
     // Strictly calibrated between 50 and 100 points for indices (NIFTY, BANKNIFTY)

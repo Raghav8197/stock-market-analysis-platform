@@ -25,58 +25,138 @@ const COMMODITIES_CONFIG = [
     id: "GOLD",
     name: "Gold",
     fullName: "MCX Gold (10g)",
+    contractCode: "GOLD",
+    type: "Standard",
     unit: "10 Grams",
     category: "Bullion",
-    basePrice: 122500.0,
-    lotSize: "1 kg (Regular) / 100g (Mini)",
+    basePrice: 77450.0,
+    lotSize: "1 kg (100 units of 10g)",
     tickSize: "₹1.00",
     color: "#EAB308",
     description: "Benchmark bullion asset settled in INR based on international LBMA gold rates adjusted for customs duty and USD/INR."
   },
   {
+    id: "GOLDM",
+    name: "Gold Mini",
+    fullName: "MCX Gold Mini (10g)",
+    contractCode: "GOLDM",
+    type: "Mini",
+    unit: "10 Grams",
+    category: "Bullion",
+    basePrice: 77420.0,
+    lotSize: "100 Grams (10 units of 10g)",
+    tickSize: "₹1.00",
+    color: "#FACC15",
+    description: "Retail-friendly gold futures with a reduced lot size of 100g, quoted identically per 10 grams."
+  },
+  {
     id: "SILVER",
     name: "Silver",
     fullName: "MCX Silver (1kg)",
+    contractCode: "SILVER",
+    type: "Standard",
     unit: "1 Kilogram",
     category: "Bullion",
-    basePrice: 151800.0,
-    lotSize: "30 kg (Regular) / 5 kg (Mini)",
+    basePrice: 91400.0,
+    lotSize: "30 Kilograms",
     tickSize: "₹1.00",
     color: "#94A3B8",
-    description: "Industrial & precious metal contract quoted in ₹/kg with high daily liquidity and intraday volatility."
+    description: "Industrial & precious metal contract quoted in ₹/kg with high daily liquidity and 30 kg lot size."
+  },
+  {
+    id: "SILVERM",
+    name: "Silver Mini",
+    fullName: "MCX Silver Mini (1kg)",
+    contractCode: "SILVERM",
+    type: "Mini",
+    unit: "1 Kilogram",
+    category: "Bullion",
+    basePrice: 91380.0,
+    lotSize: "5 Kilograms",
+    tickSize: "₹1.00",
+    color: "#CBD5E1",
+    description: "Most popular retail silver futures contract on Groww and Zerodha with a 5 kg lot size quoted in ₹/kg."
+  },
+  {
+    id: "SILVERMIC",
+    name: "Silver Micro",
+    fullName: "MCX Silver Micro (1kg)",
+    contractCode: "SILVERMIC",
+    type: "Micro",
+    unit: "1 Kilogram",
+    category: "Bullion",
+    basePrice: 91360.0,
+    lotSize: "1 Kilogram",
+    tickSize: "₹1.00",
+    color: "#E2E8F0",
+    description: "Lowest margin retail contract with 1 kg lot size, ideal for small capital intraday scalping."
   },
   {
     id: "CRUDEOIL",
     name: "Crude Oil",
     fullName: "MCX Crude Oil (1 bbl)",
+    contractCode: "CRUDEOIL",
+    type: "Standard",
     unit: "1 Barrel (bbl)",
     category: "Energy",
-    basePrice: 7720.0,
-    lotSize: "100 Barrels (Regular) / 10 Barrels (Mini)",
+    basePrice: 6050.0,
+    lotSize: "100 Barrels",
     tickSize: "₹1.00",
     color: "#F97316",
     description: "WTI Crude Oil futures settled in INR per barrel reflecting global energy benchmarks and refinery demand."
   },
   {
+    id: "CRUDEOILM",
+    name: "Crude Oil Mini",
+    fullName: "MCX Crude Oil Mini (1 bbl)",
+    contractCode: "CRUDEOILM",
+    type: "Mini",
+    unit: "1 Barrel (bbl)",
+    category: "Energy",
+    basePrice: 6055.0,
+    lotSize: "10 Barrels",
+    tickSize: "₹1.00",
+    color: "#FB923C",
+    description: "Mini energy futures contract with 10 barrels lot size for controlled capital exposure."
+  },
+  {
     id: "NATURALGAS",
     name: "Natural Gas",
     fullName: "MCX Natural Gas (mmBtu)",
+    contractCode: "NATURALGAS",
+    type: "Standard",
     unit: "1 mmBtu",
     category: "Energy",
     basePrice: 303.0,
-    lotSize: "1250 mmBtu",
+    lotSize: "1,250 mmBtu",
     tickSize: "₹0.10",
     color: "#06B6D4",
-    description: "Clean energy futures quoted per mmBtu in INR, sensitive to weather forecasts and pipeline inventory data."
+    description: "Clean energy futures quoted per mmBtu in INR, sensitive to weather forecasts and EIA storage inventory data."
+  },
+  {
+    id: "NATGASMINI",
+    name: "Natural Gas Mini",
+    fullName: "MCX Nat Gas Mini (mmBtu)",
+    contractCode: "NATGASMINI",
+    type: "Mini",
+    unit: "1 mmBtu",
+    category: "Energy",
+    basePrice: 303.20,
+    lotSize: "250 mmBtu",
+    tickSize: "₹0.10",
+    color: "#22D3EE",
+    description: "Mini natural gas contract with a 250 mmBtu lot size for precision risk management."
   },
   {
     id: "COPPER",
     name: "Copper",
     fullName: "MCX Copper (1kg)",
+    contractCode: "COPPER",
+    type: "Standard",
     unit: "1 Kilogram",
     category: "Base Metals",
-    basePrice: 1155.0,
-    lotSize: "2500 kg (Regular) / 250 kg (Mini)",
+    basePrice: 835.0,
+    lotSize: "2,500 Kilograms",
     tickSize: "₹0.05",
     color: "#D97706",
     description: "Premier base metal gauge of global industrial expansion and electrical infrastructure growth."
@@ -86,6 +166,7 @@ const COMMODITIES_CONFIG = [
 const Commodities = ({ onSelectStock }) => {
   const { prices, connected } = useLiveData();
   const [selectedCommodity, setSelectedCommodity] = useState("GOLD");
+  const [categoryFilter, setCategoryFilter] = useState("ALL"); // "ALL", "Bullion", "Energy", "Base Metals"
   const [chartViewMode, setChartViewMode] = useState("tradingview"); // "tradingview" or "scanner"
   const [timeframe, setTimeframe] = useState("1D");
   const [historyData, setHistoryData] = useState(null);
@@ -328,46 +409,91 @@ const Commodities = ({ onSelectStock }) => {
         </div>
       </div>
 
-      {/* ── Top Live Commodity Cards Bar ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        {COMMODITIES_CONFIG.map((item) => {
-          const tick = prices[item.id] || prices[item.id.toUpperCase()];
-          const price = typeof tick?.price === "number" ? tick.price : item.basePrice;
-          const isSelected = selectedCommodity === item.id;
+      {/* ── Category Filters (Groww / Sahi App Style) ── */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+        {[
+          { id: "ALL", label: "All Commodities", count: COMMODITIES_CONFIG.length },
+          { id: "Bullion", label: "Bullion (Gold & Silver)", count: COMMODITIES_CONFIG.filter(c => c.category === "Bullion").length },
+          { id: "Energy", label: "Energy (Crude & Gas)", count: COMMODITIES_CONFIG.filter(c => c.category === "Energy").length },
+          { id: "Base Metals", label: "Base Metals (Copper)", count: COMMODITIES_CONFIG.filter(c => c.category === "Base Metals").length }
+        ].map((cat) => (
+          <button
+            key={cat.id}
+            onClick={() => setCategoryFilter(cat.id)}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+              categoryFilter === cat.id
+                ? "bg-amber-500 text-gray-950 shadow-md shadow-amber-500/20 font-black"
+                : "bg-gray-900 text-gray-400 hover:text-white border border-gray-800"
+            }`}
+          >
+            <span>{cat.label}</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
+              categoryFilter === cat.id ? "bg-gray-950/20 text-gray-950" : "bg-gray-800 text-gray-400"
+            }`}>
+              {cat.count}
+            </span>
+          </button>
+        ))}
+      </div>
 
-          return (
-            <div
-              key={item.id}
-              onClick={() => setSelectedCommodity(item.id)}
-              className={`glass-panel p-4 rounded-2xl cursor-pointer transition-all border ${
-                isSelected 
-                  ? "border-amber-500/60 bg-amber-500/5 shadow-lg shadow-amber-500/10 ring-1 ring-amber-500/40" 
-                  : "border-gray-850 hover:border-gray-700 bg-darkCard/60"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{item.category}</span>
-                <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
-                  isSelected ? "bg-amber-500/20 text-amber-300" : "bg-gray-800 text-gray-400"
-                }`}>
-                  {item.unit}
-                </span>
-              </div>
+      {/* ── Top Live Commodity Cards Bar (Regular, Mini & Micro) ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+        {COMMODITIES_CONFIG
+          .filter(item => categoryFilter === "ALL" || item.category === categoryFilter)
+          .map((item) => {
+            const tick = prices[item.id] || prices[item.id.toUpperCase()];
+            const price = typeof tick?.price === "number" ? tick.price : item.basePrice;
+            const isSelected = selectedCommodity === item.id;
 
-              <div className="mt-2">
-                <h4 className="text-sm font-bold text-white font-outfit">{item.name}</h4>
-                <p className="text-lg font-black text-white font-mono mt-0.5">
-                  ₹{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              </div>
+            return (
+              <div
+                key={item.id}
+                onClick={() => setSelectedCommodity(item.id)}
+                className={`glass-panel p-3.5 rounded-2xl cursor-pointer transition-all border ${
+                  isSelected 
+                    ? "border-amber-500/70 bg-amber-500/8 shadow-lg shadow-amber-500/15 ring-1 ring-amber-500/40" 
+                    : "border-gray-850 hover:border-gray-700 bg-darkCard/60"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{item.category}</span>
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase ${
+                      item.type === "Mini" 
+                        ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/30" 
+                        : item.type === "Micro" 
+                        ? "bg-purple-500/15 text-purple-400 border border-purple-500/30" 
+                        : "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                    }`}>
+                      {item.type}
+                    </span>
+                  </div>
+                  <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                    isSelected ? "bg-amber-500/20 text-amber-300" : "bg-gray-800 text-gray-400"
+                  }`}>
+                    {item.unit}
+                  </span>
+                </div>
 
-              <div className="mt-2 pt-2 border-t border-gray-900/60 flex items-center justify-between text-[10px] text-gray-400">
-                <span>Lot: {item.lotSize.split("/")[0]}</span>
-                <span className="text-amber-400 font-bold">{isSelected ? "Selected" : "Select"}</span>
+                <div className="mt-2">
+                  <div className="flex items-center gap-1.5">
+                    <h4 className="text-sm font-black text-white font-outfit">{item.name}</h4>
+                    <span className="text-[9px] font-mono text-gray-500">MCX</span>
+                  </div>
+                  <p className="text-base font-black text-white font-mono mt-0.5">
+                    ₹{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+
+                <div className="mt-2 pt-2 border-t border-gray-900/60 flex items-center justify-between text-[10px] text-gray-400">
+                  <span className="truncate max-w-[110px]" title={item.lotSize}>Lot: {item.lotSize.split("(")[0]}</span>
+                  <span className={`font-bold ${isSelected ? "text-amber-400" : "text-gray-500"}`}>
+                    {isSelected ? "Active" : "View"}
+                  </span>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
       </div>
 
       {/* ── Main Interactive Section: Chart + AI Targets Sidebar ── */}
@@ -528,21 +654,45 @@ const Commodities = ({ onSelectStock }) => {
 
           {/* Contract Specifications Card */}
           <div className="glass-panel p-5 rounded-2xl border border-gray-850">
-            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest font-outfit mb-3">
-              MCX Contract Specifications
-            </h4>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest font-outfit">
+                MCX Contract Specifications
+              </h4>
+              <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase ${
+                activeConfig.type === "Mini" 
+                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30" 
+                  : activeConfig.type === "Micro" 
+                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/30" 
+                  : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+              }`}>
+                {activeConfig.type} Contract
+              </span>
+            </div>
+
             <div className="space-y-2 text-xs">
               <div className="flex justify-between py-1 border-b border-gray-850/60">
-                <span className="text-gray-400">Contract Unit</span>
-                <span className="text-white font-semibold">{activeConfig.unit}</span>
+                <span className="text-gray-400">Contract Name</span>
+                <span className="text-white font-semibold">{activeConfig.fullName}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-gray-850/60">
-                <span className="text-gray-400">Trading Lot</span>
-                <span className="text-white font-semibold">{activeConfig.lotSize}</span>
+                <span className="text-gray-400">TradingView Ticker</span>
+                <span className="text-amber-400 font-mono font-bold">{getTradingViewSymbol(activeConfig.id)}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-gray-850/60">
+                <span className="text-gray-400">Price Quotation</span>
+                <span className="text-white font-semibold">₹ per {activeConfig.unit}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-gray-850/60">
+                <span className="text-gray-400">Trading Lot Size</span>
+                <span className="text-emerald-400 font-semibold">{activeConfig.lotSize}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-gray-850/60">
                 <span className="text-gray-400">Tick Size</span>
                 <span className="text-white font-semibold">{activeConfig.tickSize}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-gray-850/60">
+                <span className="text-gray-400">Exchange Trading Hours</span>
+                <span className="text-white font-semibold">09:00 - 23:30 IST</span>
               </div>
               <div className="flex justify-between py-1 border-b border-gray-850/60">
                 <span className="text-gray-400">Settlement Currency</span>
@@ -550,7 +700,7 @@ const Commodities = ({ onSelectStock }) => {
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-gray-400">Exchange</span>
-                <span className="text-white font-semibold">Multi Commodity Exchange (MCX)</span>
+                <span className="text-white font-semibold">Multi Commodity Exchange of India (MCX)</span>
               </div>
             </div>
           </div>
@@ -567,7 +717,7 @@ const Commodities = ({ onSelectStock }) => {
             </h3>
             <p className="text-xs text-gray-400 mt-0.5">Real-time technical indicator scans, RSI states, and pattern formations across all commodities.</p>
           </div>
-          <span className="text-xs text-gray-400 font-medium">5 Active MCX Contracts</span>
+          <span className="text-xs text-gray-400 font-medium">{COMMODITIES_CONFIG.length} Active MCX Contracts</span>
         </div>
 
         <div className="overflow-x-auto">

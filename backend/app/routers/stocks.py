@@ -19,16 +19,21 @@ router = APIRouter(
 
 COMMODITY_DISPLAY_NAMES = {
     "GOLD": "MCX Gold (10g)",
+    "GOLDM": "MCX Gold Mini (10g)",
     "SILVER": "MCX Silver (1kg)",
-    "CRUDEOIL": "MCX Crude Oil (bbl)",
-    "NATURALGAS": "MCX Natural Gas",
+    "SILVERM": "MCX Silver Mini (1kg)",
+    "SILVERMIC": "MCX Silver Micro (1kg)",
+    "CRUDEOIL": "MCX Crude Oil (1bbl)",
+    "CRUDEOILM": "MCX Crude Oil Mini (1bbl)",
+    "NATURALGAS": "MCX Natural Gas (mmBtu)",
+    "NATGASMINI": "MCX Natural Gas Mini (mmBtu)",
     "COPPER": "MCX Copper (1kg)"
 }
 
 # Screener Stock Universe
 SCREENER_UNIVERSE = [
-    # Commodities (MCX Indian Market in INR)
-    "GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER",
+    # Commodities (MCX Indian Market in INR - Regular, Mini, and Micro)
+    "GOLD", "GOLDM", "SILVER", "SILVERM", "SILVERMIC", "CRUDEOIL", "CRUDEOILM", "NATURALGAS", "NATGASMINI", "COPPER",
     # US Stocks
     "AAPL", "MSFT", "TSLA", "NVDA", "AMZN", "GOOGL", "META", "NFLX", "AMD",
     # Indian Stocks
@@ -159,11 +164,16 @@ def get_stock_analysis(
 def search_stocks(q: str = Query(..., min_length=1, description="Search query")):
     q_clean = q.strip().upper()
     mcx_commodities = [
-        {"symbol": "GOLD", "name": "MCX Gold (10g) in INR", "exchange": "MCX", "type": "Commodity"},
-        {"symbol": "SILVER", "name": "MCX Silver (1kg) in INR", "exchange": "MCX", "type": "Commodity"},
-        {"symbol": "CRUDEOIL", "name": "MCX Crude Oil in INR", "exchange": "MCX", "type": "Commodity"},
-        {"symbol": "NATURALGAS", "name": "MCX Natural Gas in INR", "exchange": "MCX", "type": "Commodity"},
-        {"symbol": "COPPER", "name": "MCX Copper (1kg) in INR", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "GOLD", "name": "MCX Gold (10g) in INR - Regular (Lot: 1kg)", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "GOLDM", "name": "MCX Gold Mini (10g) in INR - Mini (Lot: 100g)", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "SILVER", "name": "MCX Silver (1kg) in INR - Regular (Lot: 30kg)", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "SILVERM", "name": "MCX Silver Mini (1kg) in INR - Mini (Lot: 5kg)", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "SILVERMIC", "name": "MCX Silver Micro (1kg) in INR - Micro (Lot: 1kg)", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "CRUDEOIL", "name": "MCX Crude Oil in INR - Regular (Lot: 100bbl)", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "CRUDEOILM", "name": "MCX Crude Oil Mini in INR - Mini (Lot: 10bbl)", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "NATURALGAS", "name": "MCX Natural Gas in INR - Regular (Lot: 1250mmBtu)", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "NATGASMINI", "name": "MCX Natural Gas Mini in INR - Mini (Lot: 250mmBtu)", "exchange": "MCX", "type": "Commodity"},
+        {"symbol": "COPPER", "name": "MCX Copper (1kg) in INR - Regular (Lot: 2500kg)", "exchange": "MCX", "type": "Commodity"},
     ]
     matched_mcx = [
         c for c in mcx_commodities
@@ -201,11 +211,16 @@ def search_stocks(q: str = Query(..., min_length=1, description="Search query"))
         print(f"Yahoo Search failed: {e}")
         query = q.lower()
         local_db = [
-            {"symbol": "GOLD", "name": "MCX Gold (10g) in INR", "exchange": "MCX", "type": "Commodity"},
-            {"symbol": "SILVER", "name": "MCX Silver (1kg) in INR", "exchange": "MCX", "type": "Commodity"},
-            {"symbol": "CRUDEOIL", "name": "MCX Crude Oil in INR", "exchange": "MCX", "type": "Commodity"},
-            {"symbol": "NATURALGAS", "name": "MCX Natural Gas in INR", "exchange": "MCX", "type": "Commodity"},
-            {"symbol": "COPPER", "name": "MCX Copper (1kg) in INR", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "GOLD", "name": "MCX Gold (10g) in INR - Regular (Lot: 1kg)", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "GOLDM", "name": "MCX Gold Mini (10g) in INR - Mini (Lot: 100g)", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "SILVER", "name": "MCX Silver (1kg) in INR - Regular (Lot: 30kg)", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "SILVERM", "name": "MCX Silver Mini (1kg) in INR - Mini (Lot: 5kg)", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "SILVERMIC", "name": "MCX Silver Micro (1kg) in INR - Micro (Lot: 1kg)", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "CRUDEOIL", "name": "MCX Crude Oil in INR - Regular (Lot: 100bbl)", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "CRUDEOILM", "name": "MCX Crude Oil Mini in INR - Mini (Lot: 10bbl)", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "NATURALGAS", "name": "MCX Natural Gas in INR - Regular (Lot: 1250mmBtu)", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "NATGASMINI", "name": "MCX Natural Gas Mini in INR - Mini (Lot: 250mmBtu)", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "COPPER", "name": "MCX Copper (1kg) in INR - Regular (Lot: 2500kg)", "exchange": "MCX", "type": "Commodity"},
             {"symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ", "type": "Equity"},
             {"symbol": "MSFT", "name": "Microsoft Corporation", "exchange": "NASDAQ", "type": "Equity"},
             {"symbol": "TSLA", "name": "Tesla, Inc.", "exchange": "NASDAQ", "type": "Equity"},
@@ -239,7 +254,7 @@ def screen_stocks(
     # Filter Universe by market if selected
     filtered_symbols = []
     for symbol in SCREENER_UNIVERSE:
-        is_commodity = symbol in ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"]
+        is_commodity = symbol in data_fetcher.COMMODITY_SYMBOLS or data_fetcher.clean_commodity_symbol(symbol) in data_fetcher.COMMODITY_SYMBOLS
         is_indian = symbol.endswith(".NS") or symbol.endswith(".BO") or symbol in ["RELIANCE", "TCS", "INFY", "HDFCBANK"] or is_commodity
         if market == "US" and is_indian:
             continue
@@ -342,7 +357,7 @@ def get_top_intraday_movers(
     # Filter Universe by market if selected
     filtered_symbols = []
     for symbol in SCREENER_UNIVERSE:
-        is_commodity = symbol in ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"]
+        is_commodity = symbol in data_fetcher.COMMODITY_SYMBOLS or data_fetcher.clean_commodity_symbol(symbol) in data_fetcher.COMMODITY_SYMBOLS
         is_indian = symbol.endswith(".NS") or symbol.endswith(".BO") or symbol in ["RELIANCE", "TCS", "INFY", "HDFCBANK"] or is_commodity
         if market == "US" and is_indian:
             continue

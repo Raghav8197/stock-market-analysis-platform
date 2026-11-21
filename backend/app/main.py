@@ -70,7 +70,11 @@ def health_check():
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     # Default watch symbol set
-    subscribed_symbols = {"NIFTY", "BANKNIFTY", "AAPL", "TSLA", "BTC", "RELIANCE", "GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"}
+    subscribed_symbols = {
+        "NIFTY", "BANKNIFTY", "AAPL", "TSLA", "BTC", "RELIANCE", 
+        "GOLD", "GOLDM", "SILVER", "SILVERM", "SILVERMIC", 
+        "CRUDEOIL", "CRUDEOILM", "NATURALGAS", "NATGASMINI", "COPPER"
+    }
     
     # Task to handle subscription adjustments sent from frontend
     async def listen_for_subscriptions():

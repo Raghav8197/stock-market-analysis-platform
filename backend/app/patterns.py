@@ -300,37 +300,37 @@ def calculate_trade_levels(entry: float, is_bullish: bool, timeframe: str, symbo
     if s.startswith("MCX") and len(s) > 3:
         s = s[3:].strip()
 
-    if s == "GOLD":
+    if s in ["GOLD", "GOLDM", "GOLDMINI"]:
         if timeframe in ["1m", "2m"]:
-            tgt_pts = 120.0
+            tgt_pts = 100.0
         elif timeframe in ["3m", "5m"]:
-            tgt_pts = 180.0
+            tgt_pts = 150.0
         elif timeframe in ["15m", "30m"]:
-            tgt_pts = 250.0
+            tgt_pts = 220.0
         else:
-            tgt_pts = 350.0
-        sl_pts = round(tgt_pts / 2.0, 1)
-    elif s == "SILVER":
-        if timeframe in ["1m", "2m"]:
             tgt_pts = 300.0
-        elif timeframe in ["3m", "5m"]:
-            tgt_pts = 450.0
-        elif timeframe in ["15m", "30m"]:
-            tgt_pts = 650.0
-        else:
-            tgt_pts = 900.0
         sl_pts = round(tgt_pts / 2.0, 1)
-    elif s == "CRUDEOIL":
+    elif s in ["SILVER", "SILVERM", "SILVERMINI", "SILVERMIC", "SILVERMICRO"]:
         if timeframe in ["1m", "2m"]:
-            tgt_pts = 30.0
+            tgt_pts = 250.0
         elif timeframe in ["3m", "5m"]:
-            tgt_pts = 45.0
+            tgt_pts = 380.0
         elif timeframe in ["15m", "30m"]:
-            tgt_pts = 65.0
+            tgt_pts = 550.0
         else:
-            tgt_pts = 85.0
+            tgt_pts = 800.0
         sl_pts = round(tgt_pts / 2.0, 1)
-    elif s == "NATURALGAS":
+    elif s in ["CRUDEOIL", "CRUDEOILM", "CRUDEOILMINI"]:
+        if timeframe in ["1m", "2m"]:
+            tgt_pts = 25.0
+        elif timeframe in ["3m", "5m"]:
+            tgt_pts = 35.0
+        elif timeframe in ["15m", "30m"]:
+            tgt_pts = 50.0
+        else:
+            tgt_pts = 75.0
+        sl_pts = round(tgt_pts / 2.0, 1)
+    elif s in ["NATURALGAS", "NATGASMINI", "NATURALGASMINI"]:
         if timeframe in ["1m", "2m"]:
             tgt_pts = 3.0
         elif timeframe in ["3m", "5m"]:
@@ -342,13 +342,13 @@ def calculate_trade_levels(entry: float, is_bullish: bool, timeframe: str, symbo
         sl_pts = round(tgt_pts / 2.0, 2)
     elif s == "COPPER":
         if timeframe in ["1m", "2m"]:
-            tgt_pts = 6.0
+            tgt_pts = 5.0
         elif timeframe in ["3m", "5m"]:
-            tgt_pts = 9.0
+            tgt_pts = 8.0
         elif timeframe in ["15m", "30m"]:
-            tgt_pts = 14.0
+            tgt_pts = 12.0
         else:
-            tgt_pts = 20.0
+            tgt_pts = 18.0
         sl_pts = round(tgt_pts / 2.0, 2)
     elif p >= 10000:
         # Strictly calibrated within 50 - 100 points for indices (NIFTY, BANKNIFTY)
@@ -684,15 +684,25 @@ def detect_patterns_with_levels(df: pd.DataFrame, timeframe: str = "1D") -> List
             clean_s = clean_s[3:].strip()
             
         if clean_s == "GOLD":
-            fno_instrument = f"MCX GOLD {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 10g FUT"
+            fno_instrument = f"MCX GOLD {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 10g FUT (Lot: 1kg)"
+        elif clean_s in ["GOLDM", "GOLDMINI"]:
+            fno_instrument = f"MCX GOLDM {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 10g FUT (Lot: 100g)"
         elif clean_s == "SILVER":
-            fno_instrument = f"MCX SILVER {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 1kg FUT"
+            fno_instrument = f"MCX SILVER {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 1kg FUT (Lot: 30kg)"
+        elif clean_s in ["SILVERM", "SILVERMINI"]:
+            fno_instrument = f"MCX SILVERM {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 1kg FUT (Lot: 5kg)"
+        elif clean_s in ["SILVERMIC", "SILVERMICRO"]:
+            fno_instrument = f"MCX SILVERMIC {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 1kg FUT (Lot: 1kg)"
         elif clean_s == "CRUDEOIL":
             fno_instrument = f"MCX CRUDEOIL {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 100bbl FUT"
+        elif clean_s in ["CRUDEOILM", "CRUDEOILMINI"]:
+            fno_instrument = f"MCX CRUDEOILM {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 10bbl FUT"
         elif clean_s == "NATURALGAS":
-            fno_instrument = f"MCX NATURALGAS {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} FUT"
+            fno_instrument = f"MCX NATURALGAS {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 1250 mmBtu FUT"
+        elif clean_s in ["NATGASMINI", "NATURALGASMINI"]:
+            fno_instrument = f"MCX NATGASMINI {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 250 mmBtu FUT"
         elif clean_s == "COPPER":
-            fno_instrument = f"MCX COPPER {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} FUT"
+            fno_instrument = f"MCX COPPER {strike_fmt} {opt_type} / {'BUY' if is_bullish else 'SHORT'} 2500kg FUT"
         else:
             fno_instrument = f"BUY {fno_strike_str} / {'BUY' if is_bullish else 'SHORT'} FUTURE"
         # Formatted holding label matching timeframe
