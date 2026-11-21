@@ -8,6 +8,7 @@ import AISignals from "./components/AISignals";
 import Alerts from "./components/Alerts";
 import LoginPage from "./components/LoginPage";
 import IntradayMovers from "./components/IntradayMovers";
+import Commodities from "./components/Commodities";
 import {
   DashboardSkeleton,
   ScreenerSkeleton,
@@ -116,6 +117,9 @@ function App() {
         return (
           <ChartContainer symbol={symbol} setSymbol={setSymbol} />
         );
+
+      case "commodities":
+        return <Commodities onSelectStock={selectStockAndNavigate} />;
 
       case "screener":
         return isFirstLoad

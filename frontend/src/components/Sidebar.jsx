@@ -10,20 +10,22 @@ import {
   LogIn, 
   User,
   PieChart,
-  Flame
+  Flame,
+  Coins
 } from "lucide-react";
 
 const Sidebar = ({ activeTab, setActiveTab, onOpenAuth }) => {
   const { user, logout } = useAuth();
 
   const menuItems = [
-    { id: "dashboard", label: "Dashboard", icon: TrendingUp },
-    { id: "charts",    label: "Charts",    icon: BarChart2 },
-    { id: "screener",  label: "Screener",  icon: Filter },
-    { id: "movers",    label: "Movers",    icon: Flame },
-    { id: "funds",     label: "Funds",     icon: PieChart },
-    { id: "ai",        label: "AI",        icon: Cpu },
-    { id: "alerts",    label: "Alerts",    icon: Bell },
+    { id: "dashboard",   label: "Dashboard",   icon: TrendingUp },
+    { id: "charts",      label: "Charts",      icon: BarChart2 },
+    { id: "commodities", label: "Commodities", icon: Coins },
+    { id: "screener",    label: "Screener",    icon: Filter },
+    { id: "movers",      label: "Movers",      icon: Flame },
+    { id: "funds",       label: "Funds",       icon: PieChart },
+    { id: "ai",          label: "AI",          icon: Cpu },
+    { id: "alerts",      label: "Alerts",      icon: Bell },
   ];
 
   return (
