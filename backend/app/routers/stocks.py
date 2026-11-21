@@ -17,8 +17,18 @@ router = APIRouter(
     tags=["Stocks & Analysis"]
 )
 
+COMMODITY_DISPLAY_NAMES = {
+    "GOLD": "MCX Gold (10g)",
+    "SILVER": "MCX Silver (1kg)",
+    "CRUDEOIL": "MCX Crude Oil (bbl)",
+    "NATURALGAS": "MCX Natural Gas",
+    "COPPER": "MCX Copper (1kg)"
+}
+
 # Screener Stock Universe
 SCREENER_UNIVERSE = [
+    # Commodities (MCX Indian Market in INR)
+    "GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER",
     # US Stocks
     "AAPL", "MSFT", "TSLA", "NVDA", "AMZN", "GOOGL", "META", "NFLX", "AMD",
     # Indian Stocks
@@ -176,6 +186,11 @@ def search_stocks(q: str = Query(..., min_length=1, description="Search query"))
         print(f"Yahoo Search failed: {e}")
         query = q.lower()
         local_db = [
+            {"symbol": "GOLD", "name": "MCX Gold (10g) in INR", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "SILVER", "name": "MCX Silver (1kg) in INR", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "CRUDEOIL", "name": "MCX Crude Oil in INR", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "NATURALGAS", "name": "MCX Natural Gas in INR", "exchange": "MCX", "type": "Commodity"},
+            {"symbol": "COPPER", "name": "MCX Copper (1kg) in INR", "exchange": "MCX", "type": "Commodity"},
             {"symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ", "type": "Equity"},
             {"symbol": "MSFT", "name": "Microsoft Corporation", "exchange": "NASDAQ", "type": "Equity"},
             {"symbol": "TSLA", "name": "Tesla, Inc.", "exchange": "NASDAQ", "type": "Equity"},
@@ -209,10 +224,13 @@ def screen_stocks(
     # Filter Universe by market if selected
     filtered_symbols = []
     for symbol in SCREENER_UNIVERSE:
-        is_indian = symbol.endswith(".NS") or symbol.endswith(".BO") or symbol in ["RELIANCE", "TCS", "INFY", "HDFCBANK"]
+        is_commodity = symbol in ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"]
+        is_indian = symbol.endswith(".NS") or symbol.endswith(".BO") or symbol in ["RELIANCE", "TCS", "INFY", "HDFCBANK"] or is_commodity
         if market == "US" and is_indian:
             continue
-        if market == "IN" and not is_indian:
+        if market == "IN" and not (is_indian and not is_commodity):
+            continue
+        if market == "COMMODITY" and not is_commodity:
             continue
         filtered_symbols.append(symbol)
 
@@ -226,31 +244,35 @@ def screen_stocks(
             prev = df_full.iloc[-2] if len(df_full) > 1 else latest
             
             # Apply Filters
+            actual_rsi = rsi_filter if isinstance(rsi_filter, str) else None
+            actual_pattern = pattern_filter if isinstance(pattern_filter, str) else None
+            actual_volume_breakout = volume_breakout is True
+
             # 1. RSI Filter
             rsi_val = latest.get("RSI", 50)
-            if rsi_filter == "oversold" and rsi_val >= 35:
+            if actual_rsi == "oversold" and rsi_val >= 35:
                 return None
-            elif rsi_filter == "overbought" and rsi_val <= 65:
+            elif actual_rsi == "overbought" and rsi_val <= 65:
                 return None
                 
             # 2. Pattern Filter
-            if pattern_filter:
-                pattern_col = f"Pattern_{pattern_filter.title()}"
-                if pattern_filter.lower() == "bullish_engulfing":
+            if actual_pattern:
+                pattern_col = f"Pattern_{actual_pattern.title()}"
+                if actual_pattern.lower() == "bullish_engulfing":
                     pattern_col = "Pattern_Bullish_Engulfing"
-                elif pattern_filter.lower() == "bearish_engulfing":
+                elif actual_pattern.lower() == "bearish_engulfing":
                     pattern_col = "Pattern_Bearish_Engulfing"
-                elif pattern_filter.lower() == "double_top":
+                elif actual_pattern.lower() == "double_top":
                     pattern_col = "Pattern_Double_Top"
-                elif pattern_filter.lower() == "double_bottom":
+                elif actual_pattern.lower() == "double_bottom":
                     pattern_col = "Pattern_Double_Bottom"
-                elif pattern_filter.lower() == "head_shoulders":
+                elif actual_pattern.lower() == "head_shoulders":
                     pattern_col = "Pattern_Head_Shoulders"
-                elif pattern_filter.lower() == "shooting_star":
+                elif actual_pattern.lower() == "shooting_star":
                     pattern_col = "Pattern_Shooting_Star"
-                elif pattern_filter.lower() == "morning_star":
+                elif actual_pattern.lower() == "morning_star":
                     pattern_col = "Pattern_Morning_Star"
-                elif pattern_filter.lower() == "evening_star":
+                elif actual_pattern.lower() == "evening_star":
                     pattern_col = "Pattern_Evening_Star"
                     
                 if not latest.get(pattern_col, False):
@@ -258,7 +280,7 @@ def screen_stocks(
                     
             # 3. Volume Breakout
             vol_sma = df_full["Volume"].rolling(20).mean().iloc[-1]
-            if volume_breakout and vol_sma > 0:
+            if actual_volume_breakout and vol_sma > 0:
                 if latest["Volume"] < 2.0 * vol_sma:
                     return None
                     
@@ -269,10 +291,10 @@ def screen_stocks(
             
             return {
                 "symbol": symbol,
-                "name": data_fetcher.resolve_ticker(symbol),
+                "name": COMMODITY_DISPLAY_NAMES.get(symbol, data_fetcher.resolve_ticker(symbol)),
                 "price": round(close, 2),
                 "change_pct": round(change_pct, 2),
-                "volume": int(latest["Volume"]),
+                "volume": int(latest["Volume"]) if not pd.isna(latest.get("Volume")) else 0,
                 "rsi": round(rsi_val, 1) if not pd.isna(rsi_val) else 50.0,
                 "patterns_detected": [
                     pat for pat in ["Doji", "Hammer", "Bullish_Engulfing", "Bearish_Engulfing", "Double_Top", "Double_Bottom", "Head_Shoulders", "Shooting_Star", "Morning_Star", "Evening_Star"]
@@ -305,10 +327,13 @@ def get_top_intraday_movers(
     # Filter Universe by market if selected
     filtered_symbols = []
     for symbol in SCREENER_UNIVERSE:
-        is_indian = symbol.endswith(".NS") or symbol.endswith(".BO") or symbol in ["RELIANCE", "TCS", "INFY", "HDFCBANK"]
+        is_commodity = symbol in ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"]
+        is_indian = symbol.endswith(".NS") or symbol.endswith(".BO") or symbol in ["RELIANCE", "TCS", "INFY", "HDFCBANK"] or is_commodity
         if market == "US" and is_indian:
             continue
-        if market == "IN" and not is_indian:
+        if market == "IN" and not (is_indian and not is_commodity):
+            continue
+        if market == "COMMODITY" and not is_commodity:
             continue
         filtered_symbols.append(symbol)
 
@@ -337,7 +362,7 @@ def get_top_intraday_movers(
             
             return {
                 "symbol": symbol,
-                "name": data_fetcher.resolve_ticker(symbol),
+                "name": COMMODITY_DISPLAY_NAMES.get(symbol, data_fetcher.resolve_ticker(symbol)),
                 "price": round(close, 2),
                 "change_pct": round(change_pct, 2),
                 "volume_surge": round(vol_surge, 1),

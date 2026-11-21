@@ -13,6 +13,12 @@ TICKER_MAP = {
     "BANKNIFTY": "^NSEBANK",
     "GIFTNIFTY": "GIFTY=F",
     "SENSEX": "^BSESN",
+    # Commodities (MCX Indian Market in INR)
+    "GOLD": "GC=F",
+    "SILVER": "SI=F",
+    "CRUDEOIL": "CL=F",
+    "NATURALGAS": "NG=F",
+    "COPPER": "HG=F",
     # US Indices
     "NASDAQ": "^IXIC",
     "NYSE": "NYA",
@@ -34,6 +40,17 @@ TICKER_MAP = {
     # Forex
     "USDINR": "USDINR=X",
     "EURUSD": "EURUSD=X"
+}
+
+COMMODITY_SYMBOLS = {"GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"}
+
+# Multipliers to convert international USD futures to Indian MCX INR specifications
+COMMODITY_INR_MULTIPLIERS = {
+    "GOLD": 29.135,       # (GC=F USD/oz / 31.1035g) * 10g * 85.5 * 1.06 -> MCX Gold 10g in ₹ INR
+    "SILVER": 2913.5,     # (SI=F USD/oz * 32.1507oz/kg) * 85.5 * 1.06 -> MCX Silver 1kg in ₹ INR
+    "CRUDEOIL": 85.5,     # CL=F USD/bbl * 85.5 -> MCX Crude Oil 1bbl in ₹ INR
+    "NATURALGAS": 85.5,   # NG=F USD/mmBtu * 85.5 -> MCX Natural Gas 1mmBtu in ₹ INR
+    "COPPER": 188.5       # HG=F USD/lb * 2.20462 lb/kg * 85.5 -> MCX Copper 1kg in ₹ INR
 }
 
 def resolve_ticker(symbol: str) -> str:
@@ -98,6 +115,14 @@ def fetch_history(symbol: str, timeframe: str = "1D", limit: int = 250) -> pd.Da
         for col in ["Open", "High", "Low", "Close", "Volume"]:
             if col in df.columns:
                 df[col] = df[col].astype(float)
+
+        # Convert commodity prices to Indian MCX Rupees (INR)
+        upper_sym = symbol.upper()
+        multiplier = COMMODITY_INR_MULTIPLIERS.get(upper_sym)
+        if multiplier:
+            for col in ["Open", "High", "Low", "Close"]:
+                if col in df.columns:
+                    df[col] = (df[col] * multiplier).round(2)
                 
         # Fill standard indices
         df.attrs["symbol"] = ticker_symbol
@@ -128,7 +153,39 @@ def get_df_value(df, row_keywords: list, col_idx=0, default=None):
 
 def fetch_fundamentals(symbol: str) -> Dict[str, Any]:
     """Fetch company financials, statements, and ratios with fallback support."""
+    upper_sym = symbol.upper()
     ticker_symbol = resolve_ticker(symbol)
+
+    if upper_sym in COMMODITY_SYMBOLS or ticker_symbol in ["GC=F", "SI=F", "CL=F", "NG=F", "HG=F"]:
+        commodity_specs = {
+            "GOLD": {"name": "MCX Gold (10g) in INR", "unit": "10 Grams", "base": 78500.0},
+            "SILVER": {"name": "MCX Silver (1kg) in INR", "unit": "1 Kilogram", "base": 92400.0},
+            "CRUDEOIL": {"name": "MCX Crude Oil in INR", "unit": "1 Barrel (bbl)", "base": 6850.0},
+            "NATURALGAS": {"name": "MCX Natural Gas in INR", "unit": "1 mmBtu", "base": 245.0},
+            "COPPER": {"name": "MCX Copper (1kg) in INR", "unit": "1 Kilogram", "base": 845.0},
+        }
+        spec = commodity_specs.get(upper_sym, {"name": f"MCX {upper_sym}", "unit": "Standard Contract", "base": 1000.0})
+        b = spec["base"]
+        return {
+            "name": spec["name"],
+            "sector": "Commodities & MCX Derivatives (INR)",
+            "market_cap": 0,
+            "pe_ratio": 0.0,
+            "eps": 0.0,
+            "roe": 0.0,
+            "debt_equity": 0.0,
+            "revenue": 0,
+            "net_profit": 0,
+            "dividend_yield": 0.0,
+            "fifty_two_week_high": round(b * 1.18, 2),
+            "fifty_two_week_low": round(b * 0.82, 2),
+            "insights": [
+                f"Quoted and settled in Indian Rupees (₹) on Multi Commodity Exchange (MCX).",
+                f"Standard physical trading unit: {spec['unit']}.",
+                "Real-time benchmark converted from international futures to Indian landed parity including customs duties."
+            ]
+        }
+
     financials = {}
     
     # 1. Fetch info and build base ratios
@@ -328,6 +385,7 @@ def generate_mock_history(symbol: str, timeframe: str, limit: int) -> pd.DataFra
     
     # Determine base price
     base_price = 150.0
+    upper_sym = symbol.upper()
     if "BTC" in symbol:
         base_price = 65000.0
     elif "ETH" in symbol:
@@ -335,9 +393,19 @@ def generate_mock_history(symbol: str, timeframe: str, limit: int) -> pd.DataFra
     elif "NIFTY" in symbol:
         base_price = 22000.0
     elif "RELIANCE" in symbol:
-        base_price = 28000.0
+        base_price = 2800.0
     elif symbol in ["TCS", "INFY"]:
         base_price = 3500.0
+    elif upper_sym in ["GOLD", "GC=F"]:
+        base_price = 78500.0
+    elif upper_sym in ["SILVER", "SI=F"]:
+        base_price = 92400.0
+    elif upper_sym in ["CRUDEOIL", "CL=F"]:
+        base_price = 6850.0
+    elif upper_sym in ["NATURALGAS", "NG=F"]:
+        base_price = 245.0
+    elif upper_sym in ["COPPER", "HG=F"]:
+        base_price = 845.0
         
     dates = []
     curr_time = datetime.now()
@@ -410,26 +478,50 @@ import math
 LIVE_PRICE_CACHE = {}  # { ticker_symbol: (price, last_fetch_time) }
 
 def get_market_type(symbol: str) -> str:
-    """Classify the symbol into market categories: CRYPTO, FOREX, IN (India), or US."""
+    """Classify the symbol into market categories: COMMODITY, CRYPTO, FOREX, IN (India), or US."""
     upper_sym = symbol.upper()
     resolved = resolve_ticker(upper_sym)
     
-    # 1. Crypto
+    # 1. Commodities (MCX in INR)
+    if upper_sym in COMMODITY_SYMBOLS or resolved in ["GC=F", "SI=F", "CL=F", "NG=F", "HG=F"]:
+        return "COMMODITY"
+
+    # 2. Crypto
     if any(c in resolved for c in ["BTC", "ETH"]) or resolved.endswith("-USD"):
         return "CRYPTO"
     
-    # 2. Forex
+    # 3. Forex
     if "USDINR" in resolved or "EURUSD" in resolved or resolved.endswith("=X"):
         return "FOREX"
         
-    # 3. Indian Market
+    # 4. Indian Market
     if (resolved.endswith(".NS") or 
         resolved.endswith(".BO") or 
         resolved in ["^NSEI", "^NSEBANK", "GIFTY=F", "^BSESN", "NIFTY", "BANKNIFTY", "GIFTNIFTY", "SENSEX"]):
         return "IN"
         
-    # 4. US Market (Default)
+    # 5. US Market (Default)
     return "US"
+
+def is_mcx_market_open(dt) -> tuple:
+    """Checks if Indian MCX Commodity market is open (09:00 to 23:30 IST weekdays)."""
+    date_str = dt.strftime("%Y-%m-%d")
+    indian_holidays = {
+        "2026-01-26", "2026-03-03", "2026-03-26", "2026-03-31", 
+        "2026-04-03", "2026-04-14", "2026-05-01", "2026-05-28", 
+        "2026-06-26", "2026-09-14", "2026-10-02", "2026-10-20", 
+        "2026-11-10", "2026-11-24", "2026-12-25"
+    }
+    if date_str in indian_holidays:
+        return False, "Holiday"
+    if dt.weekday() >= 5:
+        return False, "Closed"
+    minutes = dt.hour * 60 + dt.minute
+    start_minutes = 9 * 60
+    end_minutes = 23 * 60 + 30
+    if start_minutes <= minutes <= end_minutes:
+        return True, "Open"
+    return False, "Closed"
 
 def is_indian_market_open(dt) -> tuple:
     """Checks if Indian market is open based on IST date/time and 2026 trading calendar."""
@@ -508,7 +600,10 @@ def get_market_status(symbol: str) -> tuple:
     """
     m_type = get_market_type(symbol)
     
-    if m_type == "CRYPTO":
+    if m_type == "COMMODITY":
+        now_ist = pd.Timestamp.now(tz="Asia/Kolkata")
+        return is_mcx_market_open(now_ist)
+    elif m_type == "CRYPTO":
         return True, "Open"
     elif m_type == "FOREX":
         now_utc = pd.Timestamp.now(tz="UTC")
@@ -544,10 +639,21 @@ def get_live_ticker_price(symbol: str) -> float:
 
     # Fallback base prices dictionary
     base_prices = {
+        # Indian Indices & Commodities
         "NIFTY": 22450.50,
         "BANKNIFTY": 48200.20,
         "GIFTNIFTY": 22530.10,
         "SENSEX": 73800.40,
+        "GOLD": 78500.00,
+        "SILVER": 92400.00,
+        "CRUDEOIL": 6850.00,
+        "NATURALGAS": 245.00,
+        "COPPER": 845.00,
+        "GC=F": 78500.00,
+        "SI=F": 92400.00,
+        "CL=F": 6850.00,
+        "NG=F": 245.00,
+        "HG=F": 845.00,
         "NASDAQ": 16400.30,
         "NYSE": 17800.10,
         "SP500": 5200.40,
@@ -597,6 +703,11 @@ def get_live_ticker_price(symbol: str) -> float:
             if math.isnan(val):
                 price = None
             else:
+                # Convert commodity prices to Indian MCX Rupees (INR)
+                upper_sym = symbol.upper()
+                mult = COMMODITY_INR_MULTIPLIERS.get(upper_sym)
+                if mult:
+                    val = val * mult
                 price = val
         except (ValueError, TypeError):
             price = None

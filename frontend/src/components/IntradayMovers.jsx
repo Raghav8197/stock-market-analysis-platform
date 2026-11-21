@@ -17,6 +17,7 @@ const isIndianSymbol = (symbol) => {
   const s = symbol.toUpperCase();
   return (
     ["NIFTY", "BANKNIFTY", "GIFTNIFTY", "SENSEX", "^NSEI", "^NSEBANK", "GIFTY=F", "^BSESN"].includes(s) ||
+    ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"].includes(s) ||
     s.endsWith(".NS") ||
     s.endsWith(".BO") ||
     ["RELIANCE", "TCS", "INFY", "HDFCBANK"].includes(s)
@@ -61,7 +62,7 @@ const IntradayMovers = ({ onSelectStock }) => {
           <div>
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[10px] font-bold text-gray-550 uppercase tracking-widest">
-                {isIndian ? "NSE India" : "US Market"}
+                {["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"].includes(stock.symbol.toUpperCase()) ? "MCX India (₹)" : isIndian ? "NSE India" : "US Market"}
               </span>
               {stock.patterns_detected.slice(0, 1).map(pat => (
                 <span key={pat} className="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase bg-indigo-950/40 text-indigo-400 border border-indigo-500/10 tracking-wider">
@@ -145,17 +146,22 @@ const IntradayMovers = ({ onSelectStock }) => {
 
       {/* Filter Tabs */}
       <div className="flex gap-2 border-b border-gray-900 pb-2 overflow-x-auto">
-        {["ALL", "IN", "US"].map((m) => (
+        {[
+          { key: "ALL", label: "All Markets" },
+          { key: "IN", label: "India Equities" },
+          { key: "COMMODITY", label: "Commodities (INR)" },
+          { key: "US", label: "US Markets" }
+        ].map(({ key, label }) => (
           <button
-            key={m}
-            onClick={() => setMarket(m)}
+            key={key}
+            onClick={() => setMarket(key)}
             className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition-colors whitespace-nowrap cursor-pointer ${
-              market === m 
+              market === key 
                 ? "bg-indigo-600 text-white glow-indigo" 
                 : "bg-darkCard hover:bg-gray-800 text-gray-400"
             }`}
           >
-            {m === "IN" ? "India Markets" : m === "US" ? "US Markets" : "All Markets"}
+            {label}
           </button>
         ))}
       </div>

@@ -8,7 +8,7 @@ export const LiveDataProvider = ({ children }) => {
   const [connected, setConnected] = useState(false);
   const ws = useRef(null);
   const subscriptions = useRef(new Set([
-    "NIFTY", "BANKNIFTY", "GIFTNIFTY", "SENSEX", "NASDAQ", "SP500", "BTC", "ETH", "RELIANCE", "USDINR", "EURUSD"
+    "NIFTY", "BANKNIFTY", "GIFTNIFTY", "SENSEX", "GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER", "NASDAQ", "SP500", "BTC", "ETH", "RELIANCE", "USDINR", "EURUSD"
   ]));
   const reconnectTimeout = useRef(null);
   const reconnectAttempts = useRef(0);

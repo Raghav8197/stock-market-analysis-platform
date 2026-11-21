@@ -6,6 +6,7 @@ const isIndianSymbol = (symbol) => {
   const s = symbol.toUpperCase();
   return (
     ["NIFTY", "BANKNIFTY", "GIFTNIFTY", "SENSEX", "^NSEI", "^NSEBANK", "GIFTY=F", "^BSESN"].includes(s) ||
+    ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"].includes(s) ||
     s.endsWith(".NS") ||
     s.endsWith(".BO") ||
     ["RELIANCE", "TCS", "INFY", "HDFCBANK"].includes(s)

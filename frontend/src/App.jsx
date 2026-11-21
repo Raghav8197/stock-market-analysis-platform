@@ -134,7 +134,7 @@ function App() {
       case "ai":
         return isFirstLoad
           ? <AISignalsSkeleton />
-          : <AISignals symbol={symbol} />;
+          : <AISignals symbol={symbol} onSelectStock={setSymbol} />;
 
       case "alerts":
         return <Alerts />;

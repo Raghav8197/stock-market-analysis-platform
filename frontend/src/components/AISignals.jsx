@@ -16,13 +16,14 @@ const isIndianSymbol = (symbol) => {
   const s = symbol.toUpperCase();
   return (
     ["NIFTY", "BANKNIFTY", "GIFTNIFTY", "SENSEX", "^NSEI", "^NSEBANK", "GIFTY=F", "^BSESN"].includes(s) ||
+    ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"].includes(s) ||
     s.endsWith(".NS") ||
     s.endsWith(".BO") ||
     ["RELIANCE", "TCS", "INFY", "HDFCBANK"].includes(s)
   );
 };
 
-const AISignals = ({ symbol }) => {
+const AISignals = ({ symbol, onSelectStock }) => {
   const { user } = useAuth();
   const [analysis, setAnalysis] = useState(null);
   const [currentPrice, setCurrentPrice] = useState(null);
@@ -103,7 +104,7 @@ const AISignals = ({ symbol }) => {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between border-b border-gray-800 pb-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-800 pb-4">
         <div>
           <span className="text-xs font-bold text-indigo-400 uppercase tracking-widest font-outfit">AI Advisory System</span>
           <h2 className="text-2xl font-bold text-white font-outfit mt-0.5">AI Insights: {symbol}</h2>
@@ -112,6 +113,33 @@ const AISignals = ({ symbol }) => {
           <Cpu className="w-4 h-4 text-indigo-400 animate-pulse" />
           <span>Dynamic RF Regressor Model</span>
         </div>
+      </div>
+
+      {/* Quick Asset Selector */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest shrink-0 mr-1">Select Asset:</span>
+        {[
+          { sym: "NIFTY", label: "Nifty 50" },
+          { sym: "BANKNIFTY", label: "Bank Nifty" },
+          { sym: "GOLD", label: "Gold (MCX ₹)" },
+          { sym: "CRUDEOIL", label: "Crude Oil (₹)" },
+          { sym: "SILVER", label: "Silver (MCX ₹)" },
+          { sym: "NATURALGAS", label: "Natural Gas (₹)" },
+          { sym: "RELIANCE", label: "Reliance" },
+          { sym: "AAPL", label: "Apple" }
+        ].map(item => (
+          <button
+            key={item.sym}
+            onClick={() => onSelectStock && onSelectStock(item.sym)}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer ${
+              symbol === item.sym
+                ? "bg-indigo-600 text-white border-indigo-500 shadow-sm shadow-indigo-600/30"
+                : "bg-darkCard hover:bg-gray-800 text-gray-300 border-gray-800"
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
       </div>
 
       {loading ? (

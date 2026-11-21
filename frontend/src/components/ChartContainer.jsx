@@ -8,6 +8,7 @@ const isIndianSymbol = (symbol) => {
   const s = symbol.toUpperCase();
   return (
     ["NIFTY", "BANKNIFTY", "GIFTNIFTY", "SENSEX", "^NSEI", "^NSEBANK", "GIFTY=F", "^BSESN"].includes(s) ||
+    ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"].includes(s) ||
     s.endsWith(".NS") ||
     s.endsWith(".BO") ||
     ["RELIANCE", "TCS", "INFY", "HDFCBANK"].includes(s)
@@ -15,6 +16,11 @@ const isIndianSymbol = (symbol) => {
 };
 
 const SEARCH_DATABASE = [
+  { symbol: "GOLD", name: "MCX Gold (10g) in INR", market: "Commodity (INR)" },
+  { symbol: "SILVER", name: "MCX Silver (1kg) in INR", market: "Commodity (INR)" },
+  { symbol: "CRUDEOIL", name: "MCX Crude Oil (bbl) in INR", market: "Commodity (INR)" },
+  { symbol: "NATURALGAS", name: "MCX Natural Gas in INR", market: "Commodity (INR)" },
+  { symbol: "COPPER", name: "MCX Copper (1kg) in INR", market: "Commodity (INR)" },
   { symbol: "AAPL", name: "Apple Inc.", market: "US" },
   { symbol: "MSFT", name: "Microsoft Corp.", market: "US" },
   { symbol: "TSLA", name: "Tesla Inc.", market: "US" },
@@ -1352,6 +1358,37 @@ const ChartContainer = ({ symbol, setSymbol }) => {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Quick Market & Commodity Ticker Selector */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest shrink-0 mr-1">Quick Select:</span>
+        {[
+          { sym: "NIFTY", name: "Nifty 50", type: "Index" },
+          { sym: "BANKNIFTY", name: "Bank Nifty", type: "Index" },
+          { sym: "GOLD", name: "Gold (MCX ₹)", type: "Commodity" },
+          { sym: "CRUDEOIL", name: "Crude Oil (₹)", type: "Commodity" },
+          { sym: "SILVER", name: "Silver (MCX ₹)", type: "Commodity" },
+          { sym: "NATURALGAS", name: "Natural Gas (₹)", type: "Commodity" },
+          { sym: "COPPER", name: "Copper (₹)", type: "Commodity" },
+          { sym: "RELIANCE", name: "Reliance", type: "Equity" },
+          { sym: "AAPL", name: "Apple", type: "US" },
+        ].map(item => (
+          <button
+            key={item.sym}
+            type="button"
+            onClick={() => setSymbol(item.sym)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer ${
+              symbol === item.sym
+                ? item.type === "Commodity"
+                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-500/20"
+                  : "bg-indigo-600 text-white border-indigo-500 shadow-sm shadow-indigo-600/30"
+                : "bg-darkCard hover:bg-gray-800 text-gray-300 border-gray-800 hover:border-gray-700"
+            }`}
+          >
+            {item.name}
+          </button>
+        ))}
       </div>
 
       {/* Sub-tab selection: Technical vs Fundamental */}

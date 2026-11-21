@@ -6,6 +6,7 @@ const isIndianSymbol = (symbol) => {
   const s = symbol.toUpperCase();
   return (
     ["NIFTY", "BANKNIFTY", "GIFTNIFTY", "SENSEX", "^NSEI", "^NSEBANK", "GIFTY=F", "^BSESN"].includes(s) ||
+    ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"].includes(s) ||
     s.endsWith(".NS") ||
     s.endsWith(".BO") ||
     ["RELIANCE", "TCS", "INFY", "HDFCBANK"].includes(s)
@@ -261,9 +262,10 @@ const Screener = ({ onSelectStock }) => {
             onChange={(e) => setMarket(e.target.value)}
             className="w-full bg-gray-950/60 border border-gray-800 text-xs text-white rounded-xl py-3 px-4 focus:outline-none focus:border-indigo-500 transition-colors"
           >
-            <option value="ALL">All Markets (US + India)</option>
-            <option value="US">US Markets (NYSE/NASDAQ)</option>
-            <option value="IN">Indian Markets (NSE/BSE)</option>
+            <option value="ALL">All Markets (India + Commodities + US)</option>
+            <option value="IN">Indian Equities (NSE/BSE in ₹)</option>
+            <option value="COMMODITY">Commodities (MCX in ₹ INR)</option>
+            <option value="US">US Markets (NYSE/NASDAQ in $)</option>
           </select>
         </div>
 

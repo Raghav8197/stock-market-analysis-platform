@@ -9,6 +9,7 @@ const isIndianSymbol = (symbol) => {
   const s = symbol.toUpperCase();
   return (
     ["NIFTY", "BANKNIFTY", "GIFTNIFTY", "SENSEX", "^NSEI", "^NSEBANK", "GIFTY=F", "^BSESN"].includes(s) ||
+    ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"].includes(s) ||
     s.endsWith(".NS") ||
     s.endsWith(".BO") ||
     ["RELIANCE", "TCS", "INFY", "HDFCBANK"].includes(s)
@@ -43,6 +44,11 @@ const Dashboard = ({ onSelectStock, onOpenAuth }) => {
     { id: "BANKNIFTY", name: "Bank Nifty", market: "IN", yf: "^NSEBANK" },
     { id: "GIFTNIFTY", name: "GIFT Nifty", market: "IN", yf: "GIFTY=F" },
     { id: "SENSEX", name: "SENSEX", market: "IN", yf: "^BSESN" },
+    { id: "GOLD", name: "Gold (MCX 10g)", market: "COMMODITY", yf: "GC=F" },
+    { id: "SILVER", name: "Silver (MCX 1kg)", market: "COMMODITY", yf: "SI=F" },
+    { id: "CRUDEOIL", name: "Crude Oil (MCX)", market: "COMMODITY", yf: "CL=F" },
+    { id: "NATURALGAS", name: "Natural Gas (MCX)", market: "COMMODITY", yf: "NG=F" },
+    { id: "COPPER", name: "Copper (MCX 1kg)", market: "COMMODITY", yf: "HG=F" },
     { id: "NASDAQ", name: "NASDAQ 100", market: "US", yf: "^IXIC" },
     { id: "SP500", name: "S&P 500", market: "US", yf: "^GSPC" },
     { id: "BTC", name: "Bitcoin / USD", market: "CRYPTO", yf: "BTC-USD" },
@@ -187,7 +193,7 @@ const Dashboard = ({ onSelectStock, onOpenAuth }) => {
 
       {/* Market Selector Tab Bar */}
       <div className="flex gap-1.5 md:gap-2 border-b border-gray-900 pb-2 overflow-x-auto">
-        {["ALL", "IN", "US", "CRYPTO", "FOREX"].map((m) => (
+        {["ALL", "IN", "COMMODITY", "US", "CRYPTO", "FOREX"].map((m) => (
           <button
             key={m}
             onClick={() => setActiveMarket(m)}
@@ -197,7 +203,7 @@ const Dashboard = ({ onSelectStock, onOpenAuth }) => {
                 : "bg-darkCard hover:bg-gray-800 text-gray-400"
             }`}
           >
-            {m === "IN" ? "India" : m === "US" ? "US" : m === "CRYPTO" ? "Crypto" : m === "FOREX" ? "Forex" : "All"}
+            {m === "IN" ? "India" : m === "COMMODITY" ? "Commodities (INR)" : m === "US" ? "US" : m === "CRYPTO" ? "Crypto" : m === "FOREX" ? "Forex" : "All"}
           </button>
         ))}
       </div>
@@ -207,7 +213,7 @@ const Dashboard = ({ onSelectStock, onOpenAuth }) => {
         {filteredIndices.map((idx) => {
           const liveData = prices[idx.id] || prices[idx.yf] || prices[idx.id.toUpperCase()] || prices[idx.yf.toUpperCase()];
           const priceVal = liveData?.price;
-          const currencySymbol = (idx.market === "IN" || (idx.market === "FOREX" && idx.id === "USDINR")) ? "₹" : "$";
+          const currencySymbol = (idx.market === "IN" || idx.market === "COMMODITY" || (idx.market === "FOREX" && idx.id === "USDINR")) ? "₹" : "$";
           const priceFormatted = (typeof priceVal === "number" && !isNaN(priceVal)) 
             ? `${currencySymbol}${priceVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
             : "--";

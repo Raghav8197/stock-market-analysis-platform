@@ -7,6 +7,7 @@ const isIndianSymbol = (symbol) => {
   const s = symbol.toUpperCase();
   return (
     ["NIFTY", "BANKNIFTY", "GIFTNIFTY", "SENSEX", "^NSEI", "^NSEBANK", "GIFTY=F", "^BSESN"].includes(s) ||
+    ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"].includes(s) ||
     s.endsWith(".NS") ||
     s.endsWith(".BO") ||
     ["RELIANCE", "TCS", "INFY", "HDFCBANK"].includes(s)
@@ -153,11 +154,25 @@ const Alerts = () => {
 
             <form onSubmit={handleCreateAlert} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Symbol</label>
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Symbol</label>
+                  <div className="flex gap-1">
+                    {["NIFTY", "GOLD", "CRUDEOIL", "SILVER"].map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setSymbol(s)}
+                        className="text-[9px] px-1.5 py-0.5 rounded bg-gray-900 border border-gray-800 text-indigo-400 hover:text-white"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. AAPL, BTC, NIFTY"
+                  placeholder="e.g. GOLD, CRUDEOIL, NIFTY, AAPL"
                   value={symbol}
                   onChange={(e) => setSymbol(e.target.value)}
                   className="w-full bg-gray-950/60 border border-gray-800 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors uppercase"
