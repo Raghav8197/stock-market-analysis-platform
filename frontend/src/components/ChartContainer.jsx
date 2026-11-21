@@ -1131,6 +1131,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   const aiTarget = aiTradeLevels ? aiTradeLevels.target : null;
   const aiStopLoss = aiTradeLevels ? aiTradeLevels.stopLoss : null;
   const aiTargetPoints = aiTradeLevels ? aiTradeLevels.tgtPts : 0;
+  const aiMovePct = latestPrice > 0 ? (aiTargetPoints / latestPrice) : 0;
 
   // Selected or latest pattern, with fallback to live market setup
   const patternsList = data?.detected_patterns || [];
