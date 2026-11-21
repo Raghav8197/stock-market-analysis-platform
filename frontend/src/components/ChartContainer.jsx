@@ -53,7 +53,11 @@ import {
   CheckCircle2,
   AlertOctagon,
   Trophy,
-  Clock
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  Minimize2,
+  Maximize2
 } from "lucide-react";
 
 const calculateFnoStrike = (price) => {
@@ -630,6 +634,8 @@ const ChartContainer = ({ symbol, setSymbol }) => {
   const [analysis, setAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [selectedPatternIndex, setSelectedPatternIndex] = useState(null);
+  const [isMobileTradeDetailsOpen, setIsMobileTradeDetailsOpen] = useState(false);
+  const [isDesktopHudMinimized, setIsDesktopHudMinimized] = useState(false);
 
   const fetchChartData = async () => {
     setLoading(true);
@@ -689,7 +695,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
     if (macdContainerRef.current) macdContainerRef.current.innerHTML = "";
 
     // 1. Setup Price & Indicator Chart
-    const priceChartWidth = Math.max(chartContainerRef.current.clientWidth || 0, 600);
+    const priceChartWidth = Math.max(chartContainerRef.current.clientWidth || 0, 300);
     const priceChartHeight = 400;
     const isIntraday = ["1m", "2m", "3m", "5m", "15m", "30m", "60m", "1h"].includes(timeframe);
 
@@ -1056,7 +1062,7 @@ const ChartContainer = ({ symbol, setSymbol }) => {
     // Window resize fallback
     const handleResize = () => {
       if (chartContainerRef.current) {
-        const w = Math.max(chartContainerRef.current.clientWidth || 0, 600);
+        const w = Math.max(chartContainerRef.current.clientWidth || 0, 300);
         chart.resize(w, priceChartHeight);
         if (rsiChart) rsiChart.resize(w, 120);
         if (macdChart) macdChart.resize(w, 120);
@@ -1538,25 +1544,18 @@ const ChartContainer = ({ symbol, setSymbol }) => {
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Left Column: Charts */}
             <div className="lg:col-span-3 space-y-4">
-              {/* Main Price & Indicators Canvas with Live Pattern Callout HUD */}
-              <div className="relative w-full overflow-hidden rounded-xl border border-gray-850/50">
-                <div 
-                  ref={chartContainerRef} 
-                  className="w-full" 
-                  style={{ height: "400px" }}
-                />
-
-                {/* Floating Live Pattern HUD Overlay on the chart canvas */}
-                {activePattern && (
-                  <div className="absolute top-3 left-3 z-10 bg-gray-950/90 backdrop-blur-md border border-indigo-500/30 rounded-xl p-3 shadow-2xl max-w-sm pointer-events-auto transition-all">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-sm" style={{
-                        color: activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444"),
-                        backgroundColor: `${activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444")}15`,
-                        borderColor: `${activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444")}35`
-                      }}>
-                        {activePattern.is_historical_view ? `📜 Historical: ${activePattern.pattern}` : `⚡ Live Trade: ${activePattern.pattern}`} ({activePattern.recommendation})
-                      </span>
+              {/* Mobile Live Trade Card (Outside canvas flow - guarantees zero overlap/override on mobile) */}
+              {activePattern && (
+                <div className="md:hidden bg-gray-950/95 border border-indigo-500/30 rounded-xl p-3 shadow-lg">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-sm truncate max-w-[210px]" style={{
+                      color: activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444"),
+                      backgroundColor: `${activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444")}15`,
+                      borderColor: `${activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444")}35`
+                    }}>
+                      {activePattern.is_historical_view ? `📜 Historical: ${activePattern.pattern}` : `⚡ Live Trade: ${activePattern.pattern}`} ({activePattern.recommendation})
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
                       {activePattern.is_historical_view ? (
                         <button 
                           onClick={() => setSelectedPatternIndex(null)}
@@ -1565,109 +1564,307 @@ const ChartContainer = ({ symbol, setSymbol }) => {
                           Back to Live
                         </button>
                       ) : (
-                        <span className="text-[9px] font-mono text-emerald-400 font-bold flex items-center gap-1">
+                        <span className="text-[9px] font-mono text-emerald-400 font-bold flex items-center gap-1 mr-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
                           LIVE
                         </span>
                       )}
-                    </div>
-
-                    <div className="flex items-center gap-1.5 mt-1 text-[9px] text-gray-400 font-medium">
-                      <span className="px-1.5 py-0.5 rounded bg-gray-900 border border-gray-800 text-indigo-300 font-bold uppercase">
-                        {timeframe} Candle
-                      </span>
-                      <span>➔</span>
-                      <span className="text-amber-400 font-bold">
-                        {activePattern.target_horizon}
-                      </span>
-                    </div>
-
-                    {/* F&O Instrument & Strike Callout */}
-                    {activePattern.is_actionable && activePattern.fno_instrument && (
-                      <div className="mt-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between text-[10px]">
-                        <span className="text-gray-400 font-bold uppercase text-[9px]">F&O Trade:</span>
-                        <span className="font-extrabold text-amber-300 font-mono tracking-wide">
-                          {activePattern.fno_instrument}
-                        </span>
-                      </div>
-                    )}
-
-                    {activePattern.entry && activePattern.target ? (
-                      <>
-                        <div className="mt-2 text-xs font-bold text-white flex items-center justify-between">
-                          <span>
-                            {activePattern.recommendation === "BUY" ? (
-                              <span className="text-emerald-400 font-extrabold">▶ BUY CALL (CE) / FUTURE:</span>
-                            ) : (
-                              <span className="text-rose-400 font-extrabold">▶ BUY PUT (PE) / SHORT:</span>
-                            )}
-                            {" "}{currencySymbol}{activePattern.entry?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                          <span className="text-[9px] text-gray-400 font-mono">
-                            Max: {activePattern.max_holding_days || tfConfig.horizon}
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-800 text-[10px]">
-                          <div>
-                            <span className="text-gray-400 text-[9px] font-bold uppercase block">
-                              EXIT TARGET ({activePattern.horizon_short || 'Target'})
-                            </span>
-                            <span className={`font-mono font-bold block ${activePattern.recommendation === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                              {currencySymbol}{activePattern.target?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                            <span className="text-[9px] font-mono text-gray-500 block">
-                              {activePattern.recommendation === 'BUY' ? `+${activePattern.target_points} pts (+${activePattern.target_pct}%)` : `-${activePattern.target_points} pts (-${activePattern.target_pct}%)`}
-                            </span>
-                          </div>
-                          <div className="border-l border-gray-850 pl-2">
-                            <span className="text-gray-400 text-[9px] font-bold uppercase block">STOP LOSS</span>
-                            <span className="font-mono font-bold text-rose-400 block">
-                              {currencySymbol}{activePattern.stop_loss?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                            <span className="text-[9px] font-mono text-gray-500 block">
-                              {activePattern.recommendation === 'BUY' ? `-${activePattern.sl_points} pts` : `+${activePattern.sl_points} pts`}
-                            </span>
-                          </div>
-                          <div className="border-l border-gray-850 pl-2">
-                            <span className="text-gray-400 text-[9px] font-bold uppercase block">RISK:REWARD</span>
-                            <span className="font-mono font-bold text-indigo-400 text-xs block">
-                              1:{activePattern.risk_reward}
-                            </span>
-                            <span className="text-[8px] font-bold text-gray-500 uppercase block">
-                              {activePattern.confidence || 'HIGH'}
-                            </span>
-                          </div>
-                        </div>
-                      </>
-                    ) : null}
-
-                    {/* Outcome Status Badge strictly within 1-3 days */}
-                    <div className="mt-2 pt-2 border-t border-gray-850 flex items-center justify-between">
-                      <span className="text-[9px] text-gray-500 font-bold uppercase">Prediction Status:</span>
-                      {activePattern.outcome === "TARGET_HIT" ? (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                          TARGET HIT (In {activePattern.bars_to_outcome || 1}D: +{Math.abs(activePattern.pnl_points || activePattern.target_points)} pts)
-                        </span>
-                      ) : activePattern.outcome === "SL_HIT" ? (
-                        <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
-                          <AlertOctagon className="w-3 h-3 text-rose-400" />
-                          STOP LOSS HIT (-{Math.abs(activePattern.pnl_points || activePattern.sl_points)} pts)
-                        </span>
-                      ) : activePattern.outcome === "TIME_EXPIRED" ? (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
-                          <Clock className="w-3 h-3 text-amber-400" />
-                          TIME EXPIRED (DAY 3 EXIT: {activePattern.pnl_points >= 0 ? `+${activePattern.pnl_points}` : activePattern.pnl_points} pts)
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
-                          <Activity className="w-3 h-3 text-cyan-400 animate-pulse" />
-                          ACTIVE F&O POSITION
-                        </span>
-                      )}
+                      <button
+                        onClick={() => setIsMobileTradeDetailsOpen(!isMobileTradeDetailsOpen)}
+                        className="text-[10px] text-indigo-300 bg-indigo-950/60 hover:bg-indigo-900/60 border border-indigo-500/30 px-2 py-0.5 rounded flex items-center gap-1 font-bold transition-colors cursor-pointer"
+                      >
+                        {isMobileTradeDetailsOpen ? (
+                          <>Collapse <ChevronUp className="w-3 h-3" /></>
+                        ) : (
+                          <>Details <ChevronDown className="w-3 h-3" /></>
+                        )}
+                      </button>
                     </div>
                   </div>
+
+                  {/* Compact summary line on mobile when collapsed */}
+                  {!isMobileTradeDetailsOpen && activePattern.entry && activePattern.target && (
+                    <div className="flex items-center justify-between text-[10px] mt-2 pt-1.5 border-t border-gray-850 font-mono">
+                      <span className="text-gray-300">
+                        Entry: <strong className="text-white">{currencySymbol}{activePattern.entry?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                      </span>
+                      <span className={activePattern.recommendation === "BUY" ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+                        Target: {currencySymbol}{activePattern.target?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({activePattern.recommendation === "BUY" ? '+' : '-'}{activePattern.target_points} pts)
+                      </span>
+                      <span className="text-rose-400">
+                        SL: {currencySymbol}{activePattern.stop_loss?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Expanded Full Trade Breakdown on Mobile */}
+                  {isMobileTradeDetailsOpen && (
+                    <div className="mt-2.5 pt-2 border-t border-gray-850 space-y-2">
+                      <div className="flex items-center gap-1.5 text-[9px] text-gray-400 font-medium">
+                        <span className="px-1.5 py-0.5 rounded bg-gray-900 border border-gray-800 text-indigo-300 font-bold uppercase">
+                          {timeframe} Candle
+                        </span>
+                        <span>➔</span>
+                        <span className="text-amber-400 font-bold">
+                          {activePattern.target_horizon}
+                        </span>
+                      </div>
+
+                      {/* F&O Instrument & Strike Callout */}
+                      {activePattern.is_actionable && activePattern.fno_instrument && (
+                        <div className="px-2.5 py-1 rounded-lg bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between text-[10px]">
+                          <span className="text-gray-400 font-bold uppercase text-[9px]">F&O Trade:</span>
+                          <span className="font-extrabold text-amber-300 font-mono tracking-wide">
+                            {activePattern.fno_instrument}
+                          </span>
+                        </div>
+                      )}
+
+                      {activePattern.entry && activePattern.target ? (
+                        <>
+                          <div className="text-xs font-bold text-white flex items-center justify-between">
+                            <span>
+                              {activePattern.recommendation === "BUY" ? (
+                                <span className="text-emerald-400 font-extrabold">▶ BUY CALL (CE) / FUTURE:</span>
+                              ) : (
+                                <span className="text-rose-400 font-extrabold">▶ BUY PUT (PE) / SHORT:</span>
+                              )}
+                              {" "}{currencySymbol}{activePattern.entry?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-[9px] text-gray-400 font-mono">
+                              Max: {activePattern.max_holding_days || tfConfig.horizon}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 pt-1 border-t border-gray-800 text-[10px]">
+                            <div>
+                              <span className="text-gray-400 text-[9px] font-bold uppercase block">
+                                EXIT TARGET ({activePattern.horizon_short || 'Target'})
+                              </span>
+                              <span className={`font-mono font-bold block ${activePattern.recommendation === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {currencySymbol}{activePattern.target?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-[9px] font-mono text-gray-500 block">
+                                {activePattern.recommendation === 'BUY' ? `+${activePattern.target_points} pts (+${activePattern.target_pct}%)` : `-${activePattern.target_points} pts (-${activePattern.target_pct}%)`}
+                              </span>
+                            </div>
+                            <div className="border-l border-gray-850 pl-2">
+                              <span className="text-gray-400 text-[9px] font-bold uppercase block">STOP LOSS</span>
+                              <span className="font-mono font-bold text-rose-400 block">
+                                {currencySymbol}{activePattern.stop_loss?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-[9px] font-mono text-gray-500 block">
+                                {activePattern.recommendation === 'BUY' ? `-${activePattern.sl_points} pts` : `+${activePattern.sl_points} pts`}
+                              </span>
+                            </div>
+                            <div className="border-l border-gray-850 pl-2">
+                              <span className="text-gray-400 text-[9px] font-bold uppercase block">RISK:REWARD</span>
+                              <span className="font-mono font-bold text-indigo-400 text-xs block">
+                                1:{activePattern.risk_reward}
+                              </span>
+                              <span className="text-[8px] font-bold text-gray-500 uppercase block">
+                                {activePattern.confidence || 'HIGH'}
+                              </span>
+                            </div>
+                          </div>
+                        </>
+                      ) : null}
+
+                      {/* Outcome Status Badge */}
+                      <div className="pt-2 border-t border-gray-850 flex items-center justify-between">
+                        <span className="text-[9px] text-gray-500 font-bold uppercase">Prediction Status:</span>
+                        {activePattern.outcome === "TARGET_HIT" ? (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                            TARGET HIT (In {activePattern.bars_to_outcome || 1}D: +{Math.abs(activePattern.pnl_points || activePattern.target_points)} pts)
+                          </span>
+                        ) : activePattern.outcome === "SL_HIT" ? (
+                          <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
+                            <AlertOctagon className="w-3 h-3 text-rose-400" />
+                            STOP LOSS HIT (-{Math.abs(activePattern.pnl_points || activePattern.sl_points)} pts)
+                          </span>
+                        ) : activePattern.outcome === "TIME_EXPIRED" ? (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
+                            <Clock className="w-3 h-3 text-amber-400" />
+                            TIME EXPIRED (DAY 3 EXIT: {activePattern.pnl_points >= 0 ? `+${activePattern.pnl_points}` : activePattern.pnl_points} pts)
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
+                            <Activity className="w-3 h-3 text-cyan-400 animate-pulse" />
+                            ACTIVE F&O POSITION
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Main Price & Indicators Canvas with Live Pattern Callout HUD */}
+              <div className="relative w-full overflow-hidden rounded-xl border border-gray-850/50">
+                <div 
+                  ref={chartContainerRef} 
+                  className="w-full" 
+                  style={{ height: "400px" }}
+                />
+
+                {/* Floating Live Pattern HUD Overlay on the chart canvas (Desktop only: hidden md:block) */}
+                {activePattern && (
+                  isDesktopHudMinimized ? (
+                    <div className="hidden md:block absolute top-3 left-3 z-10 bg-gray-950/90 backdrop-blur-md border border-indigo-500/30 rounded-xl px-3 py-2 shadow-2xl pointer-events-auto transition-all">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-sm" style={{
+                          color: activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444"),
+                          backgroundColor: `${activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444")}15`,
+                          borderColor: `${activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444")}35`
+                        }}>
+                          {activePattern.is_historical_view ? `📜 ${activePattern.pattern}` : `⚡ Live Trade: ${activePattern.pattern}`} ({activePattern.recommendation})
+                        </span>
+                        {activePattern.target && (
+                          <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                            🎯 {currencySymbol}{activePattern.target?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => setIsDesktopHudMinimized(false)}
+                          title="Expand Live Trade HUD"
+                          className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800/60 transition-colors cursor-pointer ml-1"
+                        >
+                          <Maximize2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="hidden md:block absolute top-3 left-3 z-10 bg-gray-950/90 backdrop-blur-md border border-indigo-500/30 rounded-xl p-3 shadow-2xl max-w-[340px] lg:max-w-sm pointer-events-auto transition-all">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-sm truncate" style={{
+                          color: activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444"),
+                          backgroundColor: `${activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444")}15`,
+                          borderColor: `${activePattern.color || (activePattern.recommendation === "BUY" ? "#10B981" : "#EF4444")}35`
+                        }}>
+                          {activePattern.is_historical_view ? `📜 Historical: ${activePattern.pattern}` : `⚡ Live Trade: ${activePattern.pattern}`} ({activePattern.recommendation})
+                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {activePattern.is_historical_view ? (
+                            <button 
+                              onClick={() => setSelectedPatternIndex(null)}
+                              className="text-[9px] bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/40 font-bold transition-colors cursor-pointer"
+                            >
+                              Back to Live
+                            </button>
+                          ) : (
+                            <span className="text-[9px] font-mono text-emerald-400 font-bold flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                              LIVE
+                            </span>
+                          )}
+                          <button
+                            onClick={() => setIsDesktopHudMinimized(true)}
+                            title="Minimize Live Trade HUD"
+                            className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800/60 transition-colors cursor-pointer"
+                          >
+                            <Minimize2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 mt-1 text-[9px] text-gray-400 font-medium">
+                        <span className="px-1.5 py-0.5 rounded bg-gray-900 border border-gray-800 text-indigo-300 font-bold uppercase">
+                          {timeframe} Candle
+                        </span>
+                        <span>➔</span>
+                        <span className="text-amber-400 font-bold">
+                          {activePattern.target_horizon}
+                        </span>
+                      </div>
+
+                      {/* F&O Instrument & Strike Callout */}
+                      {activePattern.is_actionable && activePattern.fno_instrument && (
+                        <div className="mt-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between text-[10px]">
+                          <span className="text-gray-400 font-bold uppercase text-[9px]">F&O Trade:</span>
+                          <span className="font-extrabold text-amber-300 font-mono tracking-wide">
+                            {activePattern.fno_instrument}
+                          </span>
+                        </div>
+                      )}
+
+                      {activePattern.entry && activePattern.target ? (
+                        <>
+                          <div className="mt-2 text-xs font-bold text-white flex items-center justify-between">
+                            <span>
+                              {activePattern.recommendation === "BUY" ? (
+                                <span className="text-emerald-400 font-extrabold">▶ BUY CALL (CE) / FUTURE:</span>
+                              ) : (
+                                <span className="text-rose-400 font-extrabold">▶ BUY PUT (PE) / SHORT:</span>
+                              )}
+                              {" "}{currencySymbol}{activePattern.entry?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-[9px] text-gray-400 font-mono">
+                              Max: {activePattern.max_holding_days || tfConfig.horizon}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-800 text-[10px]">
+                            <div>
+                              <span className="text-gray-400 text-[9px] font-bold uppercase block">
+                                EXIT TARGET ({activePattern.horizon_short || 'Target'})
+                              </span>
+                              <span className={`font-mono font-bold block ${activePattern.recommendation === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {currencySymbol}{activePattern.target?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-[9px] font-mono text-gray-500 block">
+                                {activePattern.recommendation === 'BUY' ? `+${activePattern.target_points} pts (+${activePattern.target_pct}%)` : `-${activePattern.target_points} pts (-${activePattern.target_pct}%)`}
+                              </span>
+                            </div>
+                            <div className="border-l border-gray-850 pl-2">
+                              <span className="text-gray-400 text-[9px] font-bold uppercase block">STOP LOSS</span>
+                              <span className="font-mono font-bold text-rose-400 block">
+                                {currencySymbol}{activePattern.stop_loss?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-[9px] font-mono text-gray-500 block">
+                                {activePattern.recommendation === 'BUY' ? `-${activePattern.sl_points} pts` : `+${activePattern.sl_points} pts`}
+                              </span>
+                            </div>
+                            <div className="border-l border-gray-850 pl-2">
+                              <span className="text-gray-400 text-[9px] font-bold uppercase block">RISK:REWARD</span>
+                              <span className="font-mono font-bold text-indigo-400 text-xs block">
+                                1:{activePattern.risk_reward}
+                              </span>
+                              <span className="text-[8px] font-bold text-gray-500 uppercase block">
+                                {activePattern.confidence || 'HIGH'}
+                              </span>
+                            </div>
+                          </div>
+                        </>
+                      ) : null}
+
+                      {/* Outcome Status Badge strictly within 1-3 days */}
+                      <div className="mt-2 pt-2 border-t border-gray-850 flex items-center justify-between">
+                        <span className="text-[9px] text-gray-500 font-bold uppercase">Prediction Status:</span>
+                        {activePattern.outcome === "TARGET_HIT" ? (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                            TARGET HIT (In {activePattern.bars_to_outcome || 1}D: +{Math.abs(activePattern.pnl_points || activePattern.target_points)} pts)
+                          </span>
+                        ) : activePattern.outcome === "SL_HIT" ? (
+                          <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
+                            <AlertOctagon className="w-3 h-3 text-rose-400" />
+                            STOP LOSS HIT (-{Math.abs(activePattern.pnl_points || activePattern.sl_points)} pts)
+                          </span>
+                        ) : activePattern.outcome === "TIME_EXPIRED" ? (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
+                            <Clock className="w-3 h-3 text-amber-400" />
+                            TIME EXPIRED (DAY 3 EXIT: {activePattern.pnl_points >= 0 ? `+${activePattern.pnl_points}` : activePattern.pnl_points} pts)
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 text-[10px] font-extrabold flex items-center gap-1 shadow-sm">
+                            <Activity className="w-3 h-3 text-cyan-400 animate-pulse" />
+                            ACTIVE F&O POSITION
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
                 )}
               </div>
 
