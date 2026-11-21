@@ -39,8 +39,11 @@ export const LiveDataProvider = ({ children }) => {
         }
       }
       const hostname = window.location.hostname;
-      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      return `${wsProtocol}//${hostname}:8000/ws/live`;
+      if (hostname === "localhost" || hostname === "127.0.0.1" || hostname.startsWith("192.168.") || hostname.startsWith("10.") || hostname.startsWith("172.")) {
+        const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        return `${wsProtocol}//${hostname}:8000/ws/live`;
+      }
+      return "wss://stock-market-analysis-platform.onrender.com/ws/live";
     };
 
     const socketUrl = getSocketUrl();

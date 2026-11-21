@@ -4,9 +4,19 @@ const getApiUrl = () => {
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
-  // In development: dynamically point to the host machine's IP on port 8000
-  const hostname = typeof window !== "undefined" ? window.location.hostname : "127.0.0.1";
-  return `http://${hostname}:8000`;
+  if (typeof window !== "undefined") {
+    const hostname = window.location.hostname;
+    // Local development loopback
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return `http://${hostname}:8000`;
+    }
+    // Local LAN testing (e.g. 192.168.x.x, 10.x.x.x)
+    if (hostname.startsWith("192.168.") || hostname.startsWith("10.") || hostname.startsWith("172.")) {
+      return `http://${hostname}:8000`;
+    }
+  }
+  // Production fallback (e.g. Vercel deployment)
+  return "https://stock-market-analysis-platform.onrender.com";
 };
 
 const API_URL = getApiUrl();

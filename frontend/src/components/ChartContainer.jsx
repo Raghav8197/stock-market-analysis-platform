@@ -675,7 +675,12 @@ const ChartContainer = ({ symbol, setSymbol }) => {
 
   // Initialize and Render Charts
   useEffect(() => {
-    if (!data || !chartContainerRef.current) return;
+    if (!data || !data.candles || data.candles.length === 0 || !chartContainerRef.current) return;
+
+    // Clean existing elements in containers
+    if (chartContainerRef.current) chartContainerRef.current.innerHTML = "";
+    if (rsiContainerRef.current) rsiContainerRef.current.innerHTML = "";
+    if (macdContainerRef.current) macdContainerRef.current.innerHTML = "";
 
     // 1. Setup Price & Indicator Chart
     const priceChartWidth = Math.max(chartContainerRef.current.clientWidth || 0, 600);
@@ -990,7 +995,16 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       macdHistSeries.setData(macdHistData);
     }
 
-    // Synchronize visible scales between active charts
+    // Auto-fit content to ensure all bars are in visible viewport
+    chart.timeScale().fitContent();
+    if (rsiChart) {
+      rsiChart.timeScale().fitContent();
+    }
+    if (macdChart) {
+      macdChart.timeScale().fitContent();
+    }
+
+    // Synchronize visible logical scales between active charts
     const activeTimeScales = [];
     if (chart) activeTimeScales.push(chart.timeScale());
     if (showRSI && rsiChart) activeTimeScales.push(rsiChart.timeScale());
@@ -998,22 +1012,19 @@ const ChartContainer = ({ symbol, setSymbol }) => {
 
     let isSyncing = false;
     activeTimeScales.forEach((ts, idx) => {
-      ts.subscribeVisibleTimeRangeChange(() => {
-        if (isSyncing) return;
+      ts.subscribeVisibleLogicalRangeChange((range) => {
+        if (isSyncing || !range) return;
         isSyncing = true;
         try {
-          const range = ts.getVisibleRange();
-          if (range && range.from != null && range.to != null) {
-            activeTimeScales.forEach((otherTs, otherIdx) => {
-              if (idx !== otherIdx) {
-                try {
-                  otherTs.setVisibleRange(range);
-                } catch (e) {
-                  // Harmless range difference during init or data warm-up
-                }
+          activeTimeScales.forEach((otherTs, otherIdx) => {
+            if (idx !== otherIdx) {
+              try {
+                otherTs.setVisibleLogicalRange(range);
+              } catch (e) {
+                // Harmless range boundary during rapid scroll
               }
-            });
-          }
+            }
+          });
         } catch (e) {
           // ignore
         } finally {
@@ -1022,22 +1033,48 @@ const ChartContainer = ({ symbol, setSymbol }) => {
       });
     });
 
-    // Handles resizing
+    // Handles resizing with ResizeObserver for exact width calculation
+    const resizeObserver = new ResizeObserver((entries) => {
+      if (!entries || entries.length === 0) return;
+      const w = Math.floor(entries[0].contentRect.width);
+      if (w > 0) {
+        chart.resize(w, priceChartHeight);
+        if (rsiChart) rsiChart.resize(w, 120);
+        if (macdChart) macdChart.resize(w, 120);
+      }
+    });
+    if (chartContainerRef.current) {
+      resizeObserver.observe(chartContainerRef.current);
+    }
+
+    // Window resize fallback
     const handleResize = () => {
       if (chartContainerRef.current) {
         const w = Math.max(chartContainerRef.current.clientWidth || 0, 600);
         chart.resize(w, priceChartHeight);
-        if (rsiChart) {
-          rsiChart.resize(w, 120);
-        }
-        if (macdChart) {
-          macdChart.resize(w, 120);
-        }
+        if (rsiChart) rsiChart.resize(w, 120);
+        if (macdChart) macdChart.resize(w, 120);
       }
     };
     window.addEventListener("resize", handleResize);
 
+    // Initial frame fit
+    requestAnimationFrame(() => {
+      if (chartContainerRef.current) {
+        const w = chartContainerRef.current.clientWidth;
+        if (w > 0) {
+          chart.resize(w, priceChartHeight);
+          if (rsiChart) rsiChart.resize(w, 120);
+          if (macdChart) macdChart.resize(w, 120);
+        }
+      }
+      chart.timeScale().fitContent();
+      if (rsiChart) rsiChart.timeScale().fitContent();
+      if (macdChart) macdChart.timeScale().fitContent();
+    });
+
     return () => {
+      resizeObserver.disconnect();
       window.removeEventListener("resize", handleResize);
       try {
         chart.remove();
@@ -1052,6 +1089,9 @@ const ChartContainer = ({ symbol, setSymbol }) => {
           macdChart.remove();
         } catch (e) {}
       }
+      if (chartContainerRef.current) chartContainerRef.current.innerHTML = "";
+      if (rsiContainerRef.current) rsiContainerRef.current.innerHTML = "";
+      if (macdContainerRef.current) macdContainerRef.current.innerHTML = "";
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
@@ -1449,13 +1489,14 @@ const ChartContainer = ({ symbol, setSymbol }) => {
             </div>
           )}
 
-          {/* Loading Spinner */}
-          {loading ? (
-            <div className="flex flex-col items-center justify-center h-[520px] bg-darkCard/50 border border-gray-850 rounded-xl">
-              <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
-              <p className="text-sm text-gray-400 mt-4 font-semibold">Running pattern scans & parsing indicators...</p>
-            </div>
-          ) : (
+          {/* Chart Display Area with Persistent Canvas and Loading Overlay */}
+          <div className="relative min-h-[500px]">
+            {loading && (
+              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-darkBg/80 backdrop-blur-sm rounded-xl">
+                <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
+                <p className="text-sm text-gray-400 mt-4 font-semibold">Running pattern scans & parsing indicators...</p>
+              </div>
+            )}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Left Column: Charts */}
             <div className="lg:col-span-3 space-y-4">
@@ -1975,8 +2016,8 @@ const ChartContainer = ({ symbol, setSymbol }) => {
               </div>
             </div>
           </div>
-          )}
         </div>
+      </div>
       ) : (
         <Fundamentals symbol={symbol} />
       )}
